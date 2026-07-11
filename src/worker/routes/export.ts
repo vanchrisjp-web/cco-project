@@ -66,6 +66,38 @@ exportRoute.get("/sessions/:sessionId/export", async (c) => {
     const ext = (row.image_r2_key.split(".").pop() || "png").toLowerCase();
     const { category, subcategory } = splitCategoryPath(row.work_item_path as string);
 
+    const components = await Promise.all(
+      (componentsByEntry.get(row.id) ?? []).map(async (comp) => {
+        let componentImageBuffer: ArrayBuffer | null = null;
+        let componentImageExtension: "png" | "jpeg" = "png";
+        if (comp.image_r2_key) {
+          const componentImageObject = await c.env.FILES.get(comp.image_r2_key);
+          if (componentImageObject) {
+            componentImageBuffer = await componentImageObject.arrayBuffer();
+            const compExt = (comp.image_r2_key.split(".").pop() || "png").toLowerCase();
+            componentImageExtension = compExt === "jpg" || compExt === "jpeg" ? "jpeg" : "png";
+          }
+        }
+        return {
+          formulaRumus: comp.formula_rumus,
+          panjang: comp.panjang,
+          lebar: comp.lebar,
+          tinggi: comp.tinggi,
+          berat: comp.berat,
+          koefisien: comp.koefisien,
+          unit: comp.unit,
+          sat: comp.sat,
+          sign: comp.sign as 1 | -1,
+          ket: comp.ket,
+          sameAsEntryIndex: comp.same_as_entry_id
+            ? entryIndexById.get(comp.same_as_entry_id) ?? null
+            : null,
+          imageBuffer: componentImageBuffer,
+          imageExtension: componentImageExtension,
+        };
+      })
+    );
+
     entries.push({
       no: i + 1,
       uraian: row.work_item_description,
@@ -75,21 +107,7 @@ exportRoute.get("/sessions/:sessionId/export", async (c) => {
       volumeAwal: row.volume_awal,
       imageBuffer,
       imageExtension: ext === "jpg" || ext === "jpeg" ? "jpeg" : "png",
-      components: (componentsByEntry.get(row.id) ?? []).map((comp) => ({
-        formulaRumus: comp.formula_rumus,
-        panjang: comp.panjang,
-        lebar: comp.lebar,
-        tinggi: comp.tinggi,
-        berat: comp.berat,
-        koefisien: comp.koefisien,
-        unit: comp.unit,
-        sat: comp.sat,
-        sign: comp.sign as 1 | -1,
-        ket: comp.ket,
-        sameAsEntryIndex: comp.same_as_entry_id
-          ? entryIndexById.get(comp.same_as_entry_id) ?? null
-          : null,
-      })),
+      components,
     });
   }
 

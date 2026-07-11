@@ -6,26 +6,37 @@ import {
 } from "../../shared/formulas";
 import { readImageDimensions } from "./imageDimensions";
 
-/** Target on-sheet display box for an embedded drawing, in pixels — sized
- * to roughly fill the "Uraian Pekerjaan / Gambar" merge (C:H, ~640px wide
- * in the reference sheet). Scaled to fit preserving aspect ratio, never
- * stretched. */
+/** Target on-sheet display box for the entry's own overview drawing, in
+ * pixels — sized to roughly fill the "Uraian Pekerjaan / Gambar" merge
+ * (C:H, ~640px wide in the reference sheet). A component's own detail
+ * drawing gets a smaller box (COMPONENT_IMAGE_*) since an entry can have
+ * several of these stacked — full-size would make the sheet unreasonably
+ * tall. Both are scaled to fit preserving aspect ratio, never stretched. */
 const IMAGE_MAX_WIDTH_PX = 480;
 const IMAGE_MAX_HEIGHT_PX = 420;
+const COMPONENT_IMAGE_MAX_WIDTH_PX = 320;
+const COMPONENT_IMAGE_MAX_HEIGHT_PX = 260;
 const DEFAULT_ROW_HEIGHT_PX = 20;
 // Column C (0-indexed 2) — just inside the left edge of the Uraian
 // Pekerjaan/Gambar merge, matching the reference sheet's drawing placement.
 const IMAGE_ANCHOR_COL = 2;
 
+interface ImageSize {
+  width: number;
+  height: number;
+}
+
 function computeImageDisplaySize(
-  natural: { width: number; height: number } | null
-): { width: number; height: number } {
+  natural: { width: number; height: number } | null,
+  maxWidth: number,
+  maxHeight: number
+): ImageSize {
   if (!natural || natural.width <= 0 || natural.height <= 0) {
-    return { width: IMAGE_MAX_WIDTH_PX, height: IMAGE_MAX_HEIGHT_PX };
+    return { width: maxWidth, height: maxHeight };
   }
   const scale = Math.min(
-    IMAGE_MAX_WIDTH_PX / natural.width,
-    IMAGE_MAX_HEIGHT_PX / natural.height,
+    maxWidth / natural.width,
+    maxHeight / natural.height,
     1 // never upscale a small source image past its native size
   );
   return {
@@ -34,12 +45,16 @@ function computeImageDisplaySize(
   };
 }
 
+function imageRowSpan(size: ImageSize | null): number {
+  return size ? Math.ceil(size.height / DEFAULT_ROW_HEIGHT_PX) : 0;
+}
+
 /**
  * Column layout matching the reference BV AWAL sheet, read directly from
  * the original CCO workbook's "BV AWAL" sheet: a thin left margin (A),
  * No. (B), a wide merged Uraian Pekerjaan/Gambar block (C:H) holding both
- * the description and the drawing, then RUMUS through Ket, a spacer (V),
- * and a Deviasi Volume column (W) that live-checks Volume Terpasang
+ * the description and the drawing(s), then RUMUS through Ket, a spacer
+ * (V), and a Deviasi Volume column (W) that live-checks Volume Terpasang
  * against the field-recorded Volume Awal.
  */
 const COL = {
@@ -90,6 +105,11 @@ export interface ComponentInput {
   sign: 1 | -1;
   ket?: string | null;
   sameAsEntryIndex?: number | null; // index into `entries` for "sama dengan <item>"
+  /** This sub-component's own detail drawing (e.g. a crop of just the
+   * recess or cut-out it represents) — independent of, and in addition
+   * to, the entry's overview image below. */
+  imageBuffer?: ArrayBuffer | null;
+  imageExtension?: "png" | "jpeg";
 }
 
 export interface EntryInput {
@@ -301,20 +321,97 @@ function resolveEntryResults(entries: EntryInput[]): number[] {
   return results;
 }
 
+interface EntryLayout {
+  headerRow: number; // 1-indexed
+  componentDataRows: number[]; // 1-indexed, one per component
+  componentImagePlacements: (({ row: number } & ImageSize) | null)[]; // one per component, null when that component has no image of its own
+  mainImage: ({ row: number } & ImageSize) | null;
+  nextRow: number; // where the next banner/entry should start
+}
+
 /**
- * Builds one entry's row block: a header row (No/Uraian/Volume Terpasang/
- * Volume Awal/Deviasi) followed by one row per Volume Bagian component.
- * Volume Terpasang is a live =SUM(...) over the component rows' Volume
- * Bagian cells — never a static number. Returns the next free row index.
+ * Lays out one entry's rows without writing anything — a header row, then
+ * one row per component (each optionally followed by its own detail
+ * image's rows), then the entry's overview image (if any), then a spacer.
+ * Computed once, up front, so "sama dengan <item>" cross-refs (which may
+ * point forward or backward) can resolve every entry's header row before
+ * any cell is written, and so a later component's image never overlaps
+ * an earlier one purely because of read-order accidents.
+ */
+function planEntry(entry: EntryInput, startRow: number): EntryLayout {
+  let row = startRow;
+  const headerRow = row;
+  row += 1;
+
+  const componentDataRows: number[] = [];
+  const componentImagePlacements: (({ row: number } & ImageSize) | null)[] = [];
+  for (const comp of entry.components) {
+    componentDataRows.push(row);
+    row += 1;
+    if (comp.imageBuffer) {
+      const size = computeImageDisplaySize(
+        readImageDimensions(comp.imageBuffer),
+        COMPONENT_IMAGE_MAX_WIDTH_PX,
+        COMPONENT_IMAGE_MAX_HEIGHT_PX
+      );
+      componentImagePlacements.push({ row, ...size });
+      row += imageRowSpan(size);
+    } else {
+      componentImagePlacements.push(null);
+    }
+  }
+
+  let mainImage: ({ row: number } & ImageSize) | null = null;
+  if (entry.imageBuffer) {
+    const size = computeImageDisplaySize(
+      readImageDimensions(entry.imageBuffer),
+      IMAGE_MAX_WIDTH_PX,
+      IMAGE_MAX_HEIGHT_PX
+    );
+    mainImage = { row, ...size };
+    row += imageRowSpan(size);
+  }
+
+  row += 1; // spacer before the next entry/banner
+  return { headerRow, componentDataRows, componentImagePlacements, mainImage, nextRow: row };
+}
+
+/** Embeds one image at a fixed top-left cell with an explicit pixel size —
+ * this scales the image to its real aspect ratio instead of stretching it
+ * to fill a cell range. Row is 0-indexed for ExcelJS's position anchor. */
+function placeImage(
+  sheet: ExcelJS.Worksheet,
+  workbook: ExcelJS.Workbook,
+  buffer: ArrayBuffer,
+  extension: "png" | "jpeg" | undefined,
+  placement: { row: number } & ImageSize
+) {
+  const imageId = workbook.addImage({ buffer: buffer as any, extension: extension ?? "png" });
+  sheet.addImage(imageId, {
+    tl: { col: IMAGE_ANCHOR_COL, row: placement.row - 1 },
+    ext: { width: placement.width, height: placement.height },
+  } as ExcelJS.ImagePosition);
+}
+
+/**
+ * Writes one entry's row block using its precomputed layout: the header
+ * row (No/Uraian/Volume Terpasang/Volume Awal/Deviasi), one row per
+ * Volume Bagian component (each with its own optional detail image right
+ * below it), and the entry's own overview image last. Volume Terpasang is
+ * a live =SUM(...) over the component rows' Volume Bagian cells — never a
+ * static number; image-only rows in between contribute 0 to that SUM, so
+ * they don't need to be excluded from the range.
  */
 function writeEntry(
   sheet: ExcelJS.Worksheet,
+  workbook: ExcelJS.Workbook,
   entry: EntryInput,
   entryIndex: number,
-  entryHeaderRow: number,
+  layout: EntryLayout,
   componentRowOfEntry: Map<number, number>, // entryIndex -> its header row, for cross-refs
   entryResults: number[] // entryIndex -> resolved Volume Terpasang total, for cached formula results
-): number {
+): void {
+  const entryHeaderRow = layout.headerRow;
   sheet.getCell(`${COL.no}${entryHeaderRow}`).value = entry.no;
   sheet.getCell(`${COL.no}${entryHeaderRow}`).alignment = { horizontal: "center", vertical: "top" };
 
@@ -325,10 +422,8 @@ function writeEntry(
   uraianCell.alignment = { wrapText: true, vertical: "top" };
   if (entry.notasi) sheet.getCell(`${COL.notasi}${entryHeaderRow}`).value = entry.notasi;
 
-  const firstComponentRow = entryHeaderRow + 1;
-  let row = firstComponentRow;
-
-  for (const comp of entry.components) {
+  entry.components.forEach((comp, ci) => {
+    const row = layout.componentDataRows[ci];
     const componentResult = computeComponentResult(comp, entryResults);
 
     if (comp.formulaRumus === CROSS_REFERENCE_RUMUS) {
@@ -367,10 +462,15 @@ function writeEntry(
     sheet.getCell(`${COL.volumeBagian}${row}`).numFmt = NUMERIC_FMT;
     if (comp.sat) sheet.getCell(`${COL.sat}${row}`).value = comp.sat;
     if (comp.ket) sheet.getCell(`${COL.ket}${row}`).value = comp.ket;
-    row += 1;
-  }
 
-  const lastComponentRow = row - 1;
+    const placement = layout.componentImagePlacements[ci];
+    if (comp.imageBuffer && placement) {
+      placeImage(sheet, workbook, comp.imageBuffer, comp.imageExtension, placement);
+    }
+  });
+
+  const firstComponentRow = layout.componentDataRows[0];
+  const lastComponentRow = layout.componentDataRows[layout.componentDataRows.length - 1];
   const volumeTerpasangResult = entryResults[entryIndex] ?? 0;
   // Volume Terpasang = live SUM over this entry's own Volume Bagian rows —
   // the generated output the whole system exists to produce correctly.
@@ -378,7 +478,7 @@ function writeEntry(
   // right away even if Excel never gets to recalculate it.
   const volumeTerpasangCell = sheet.getCell(`${COL.volumeTerpasang}${entryHeaderRow}`);
   volumeTerpasangCell.value =
-    lastComponentRow >= firstComponentRow
+    firstComponentRow != null
       ? {
           formula: `SUM(${COL.volumeBagian}${firstComponentRow}:${COL.volumeBagian}${lastComponentRow})`,
           result: volumeTerpasangResult,
@@ -404,7 +504,9 @@ function writeEntry(
     deviasiCell.alignment = { horizontal: "center", vertical: "top" };
   }
 
-  return row; // first free row right after this entry's last component
+  if (entry.imageBuffer && layout.mainImage) {
+    placeImage(sheet, workbook, entry.imageBuffer, entry.imageExtension, layout.mainImage);
+  }
 }
 
 export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Promise<ArrayBuffer> {
@@ -420,26 +522,20 @@ export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Prom
   const sheet = workbook.addWorksheet("BV AWAL");
   writeHeader(sheet, input.projectName);
 
-  // Precompute each entry's image display size once (aspect-ratio-preserving,
-  // never stretched) so the row-reservation pass can size the row block to
-  // fit the image, not just the component rows.
-  const imageSizes = input.entries.map((entry) =>
-    entry.imageBuffer ? computeImageDisplaySize(readImageDimensions(entry.imageBuffer)) : null
-  );
-
   // Plan every row up front — banner rows (category/sub-category, printed
   // whenever they change from the previous entry, matching the reference
-  // sheet's grouping) and each entry's header row — computed exactly once,
-  // so the "how many banners precede this entry" decision can't diverge
-  // between a reservation pass and a writing pass. "sama dengan <item>"
-  // cross-refs (which may point forward or backward) need every entry's
-  // header row resolved before any cell is written.
+  // sheet's grouping) and each entry's full layout (header, component
+  // rows, each component's own image, the entry's overview image) —
+  // computed exactly once, so "how many rows does this entry take" can't
+  // diverge between a reservation pass and a writing pass. "sama dengan
+  // <item>" cross-refs (which may point forward or backward) need every
+  // entry's header row resolved before any cell is written.
   let currentRow = FIRST_DATA_ROW;
-  const reservedRows: number[] = [];
+  const entryLayouts: EntryLayout[] = [];
   const banners: { row: number; label: string; kind: "category" | "subcategory" }[] = [];
   let lastCategory: string | null | undefined;
   let lastSubcategory: string | null | undefined;
-  input.entries.forEach((entry, i) => {
+  input.entries.forEach((entry) => {
     if (entry.category && entry.category !== lastCategory) {
       banners.push({ row: currentRow, label: entry.category, kind: "category" });
       currentRow += 1;
@@ -452,41 +548,18 @@ export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Prom
       lastSubcategory = entry.subcategory;
     }
 
-    reservedRows.push(currentRow);
-    const componentRows = Math.max(entry.components.length, 1) + 1;
-    const imageRows = imageSizes[i]
-      ? Math.ceil(imageSizes[i]!.height / DEFAULT_ROW_HEIGHT_PX)
-      : 0;
-    currentRow += componentRows + imageRows + 1; // + spacer row after
+    const layout = planEntry(entry, currentRow);
+    entryLayouts.push(layout);
+    currentRow = layout.nextRow;
   });
   const componentRowOfEntry = new Map<number, number>();
-  input.entries.forEach((_, i) => componentRowOfEntry.set(i, reservedRows[i]));
+  entryLayouts.forEach((layout, i) => componentRowOfEntry.set(i, layout.headerRow));
   const entryResults = resolveEntryResults(input.entries);
 
   for (const banner of banners) writeBanner(sheet, banner.row, banner.label, banner.kind);
 
   input.entries.forEach((entry, i) => {
-    const headerRow = reservedRows[i];
-    const nextFreeRow = writeEntry(sheet, entry, i, headerRow, componentRowOfEntry, entryResults);
-
-    const displaySize = imageSizes[i];
-    if (entry.imageBuffer && displaySize) {
-      const imageId = workbook.addImage({
-        buffer: entry.imageBuffer as any,
-        extension: entry.imageExtension ?? "png",
-      });
-      // Anchored at a fixed top-left cell with an explicit pixel size —
-      // this scales the image to its real aspect ratio instead of
-      // stretching it to fill a cell range (the earlier, distorting
-      // approach). Row is 0-indexed for ExcelJS's position anchor; using
-      // `nextFreeRow` (1-indexed, right after the last component row)
-      // places the image directly below the entry's data, inside the
-      // Uraian Pekerjaan/Gambar merge.
-      sheet.addImage(imageId, {
-        tl: { col: IMAGE_ANCHOR_COL, row: nextFreeRow - 1 },
-        ext: { width: displaySize.width, height: displaySize.height },
-      } as ExcelJS.ImagePosition);
-    }
+    writeEntry(sheet, workbook, entry, i, entryLayouts[i], componentRowOfEntry, entryResults);
   });
 
   const buffer = await workbook.xlsx.writeBuffer();

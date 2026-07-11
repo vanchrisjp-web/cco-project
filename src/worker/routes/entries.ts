@@ -47,6 +47,11 @@ const componentSchema = z.object({
   sign: z.union([z.literal(1), z.literal(-1)]).default(1),
   ket: z.string().nullable().optional(),
   sameAsEntryId: z.string().nullable().optional(),
+  // A component-level detail drawing (e.g. a zoomed crop of just the
+  // recess or cut-out this row represents) — separate from and optional
+  // alongside the entry's own overview image.
+  imageR2Key: z.string().nullable().optional(),
+  imageFilename: z.string().nullable().optional(),
 });
 
 const entrySchema = z.object({
@@ -89,8 +94,8 @@ entriesRoute.post("/sessions/:sessionId/entries", async (c) => {
 
   const stmt = c.env.DB.prepare(
     `INSERT INTO backup_entry_components
-      (id, entry_id, formula_template_id, panjang, lebar, tinggi, berat, koefisien, unit, sat, sign, ket, same_as_entry_id, sort_order)
-     VALUES (?, ?, (SELECT id FROM formula_templates WHERE rumus = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, entry_id, formula_template_id, panjang, lebar, tinggi, berat, koefisien, unit, sat, sign, ket, same_as_entry_id, image_r2_key, image_filename, sort_order)
+     VALUES (?, ?, (SELECT id FROM formula_templates WHERE rumus = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const batch = body.components.map((comp, i) =>
     stmt.bind(
@@ -107,6 +112,8 @@ entriesRoute.post("/sessions/:sessionId/entries", async (c) => {
       comp.sign,
       comp.ket ?? null,
       comp.sameAsEntryId ?? null,
+      comp.imageR2Key ?? null,
+      comp.imageFilename ?? null,
       i
     )
   );
