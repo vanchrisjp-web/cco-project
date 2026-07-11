@@ -1,0 +1,15 @@
+INSERT INTO formula_templates (id, rumus, label, dimension_fields, expression) VALUES
+  ('f_u',        'U',                                  'Simple unit/quantity count, no geometry',                '["unit"]',                          'U'),
+  ('f_area',     'area',                                'Direct area value (pre-known, not computed from P×L)',  '["panjang"]',                       'area'),
+  ('f_pu',       'P x U',                               'Length × quantity (linear-meter items)',                 '["panjang","unit"]',                'P x U'),
+  ('f_ptu',      'P x T x U',                           'Length × height × quantity (wall/partition area)',       '["panjang","tinggi","unit"]',       'P x T x U'),
+  ('f_plu',      'P x L x U',                           'Length × width × quantity (floor/ceiling area)',         '["panjang","lebar","unit"]',        'P x L x U'),
+  ('f_plu2',     'P x L x U / 2',                       'Half of length × width × quantity (triangular area)',    '["panjang","lebar","unit"]',        'P x L x U / 2'),
+  ('f_kp2u',     'koef x P^2 x U',                      'Coefficient × length² × quantity (circular area)',      '["koefisien","panjang","unit"]',    'koef x P^2 x U'),
+  ('f_2kp',      '2 x koef x P',                        'Coefficient × length × 2 (circumference-style)',        '["koefisien","panjang"]',           '2 x koef x P'),
+  ('f_pltu',     '(P + L) x T x U',                     '(length + width) × height × quantity',                   '["panjang","lebar","tinggi","unit"]','(P + L) x T x U'),
+  ('f_pltu2',    '(P + L + T) x U',                     'Sum of three dimensions × quantity',                     '["panjang","lebar","tinggi","unit"]','(P + L + T) x U'),
+  ('f_2pl',      '2 x (P + L)',                         'Rectangle perimeter',                                    '["panjang","lebar"]',               '2 x (P + L)'),
+  ('f_2kp2',     '2 x K x P',                           'Coefficient-scaled length, doubled',                     '["koefisien","panjang"]',           '2 x K x P'),
+  ('f_compound', 'P x L + 2 x T x (P + L) + K x T^2',   'Compound surface-area formula',                          '["panjang","lebar","tinggi","koefisien"]','P x L + 2 x T x (P + L) + K x T^2'),
+  ('f_sameas',   'sama dengan <item>',                  'Cross-reference: reuse another entry''s computed volume', '[]',                               'sama dengan <item>');

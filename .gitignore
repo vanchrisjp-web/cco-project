@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.wrangler/
+*.log
+.env
+.env.*
+!.env.example
+spike/spike_output.xlsx
+spike/wrangler-dev.log
+.DS_Store
+*.sqlite
