@@ -334,3 +334,137 @@ button + button {
   border: 1px solid var(--line-strong);
   flex: none;
 }
+
+/* Work item picker — grouped tree (Category > Sub-category > Item),
+   not a flat search list. */
+.work-item-picker {
+  position: relative;
+}
+
+.work-item-picker__selected {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
+.work-item-picker__tree {
+  margin-top: 0.4rem;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-raised);
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.work-item-picker__category {
+  border-bottom: 1px solid var(--line);
+}
+.work-item-picker__category:last-of-type {
+  border-bottom: none;
+}
+
+.work-item-picker__category-label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.4rem 0.7rem;
+  position: sticky;
+  top: 0;
+}
+
+.work-item-picker__subcategory-label {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  padding: 0.35rem 0.7rem 0.2rem 1.1rem;
+}
+
+.work-item-picker__item {
+  padding: 0.45rem 0.9rem 0.45rem 1.6rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.work-item-picker__item:hover {
+  background: var(--accent-soft);
+}
+
+.work-item-picker__item--active {
+  background: var(--good-soft);
+  color: var(--good);
+  font-weight: 600;
+}
+
+.work-item-picker__unit {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--ink-faint);
+  flex: none;
+}
+
+.work-item-picker__close {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper-raised);
+  border-top: 1px solid var(--line);
+  padding: 0.3rem 0.7rem;
+  text-align: right;
+}
+
+/* Upload/parse progress — real percentage while bytes are sending,
+   indeterminate sweep once the server takes over (no granular signal
+   exists for Tier 1 parsing, so we don't fake one). */
+.progress-bar__track {
+  height: 0.45rem;
+  background: var(--accent-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.15s linear;
+}
+
+.progress-bar__fill--indeterminate {
+  width: 40% !important;
+  animation: progress-bar-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes progress-bar-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar__fill--indeterminate {
+    animation: none;
+    width: 100% !important;
+    opacity: 0.5;
+  }
+}
+
+.progress-bar__label {
+  display: block;
+  margin-top: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}

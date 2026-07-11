@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { api } from "../api";
 
+type ParsePhase = "idle" | "uploading" | "parsing" | "done";
+
 export function UploadBq({
   sessionId,
   onParsed,
@@ -10,22 +12,29 @@ export function UploadBq({
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"free" | "accurate">("free");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ itemCount: number; mode: string } | null>(null);
+  const [phase, setPhase] = useState<ParsePhase>("idle");
+  const [uploadPct, setUploadPct] = useState(0);
+
+  const busy = phase === "uploading" || phase === "parsing";
 
   async function handleUpload() {
     if (!file) return;
-    setBusy(true);
+    setPhase("uploading");
+    setUploadPct(0);
     setError(null);
     try {
-      const res = await api.uploadBq(sessionId, file, mode);
+      const res = await api.uploadBqWithProgress(sessionId, file, mode, (fraction) => {
+        setUploadPct(fraction);
+        if (fraction >= 1) setPhase("parsing");
+      });
       setResult(res);
+      setPhase("done");
       onParsed(res.itemCount);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+      setPhase("idle");
     }
   }
 
@@ -64,9 +73,25 @@ export function UploadBq({
 
       <div style={{ marginTop: "1rem" }}>
         <button disabled={!file || busy} onClick={handleUpload}>
-          {busy ? "Parsing…" : "Upload & parse"}
+          {phase === "uploading" ? "Uploading…" : phase === "parsing" ? "Parsing…" : "Upload & parse"}
         </button>
       </div>
+
+      {busy && (
+        <div className="progress-bar" style={{ marginTop: "0.8rem" }}>
+          <div className="progress-bar__track">
+            <div
+              className={"progress-bar__fill" + (phase === "parsing" ? " progress-bar__fill--indeterminate" : "")}
+              style={phase === "uploading" ? { width: `${Math.round(uploadPct * 100)}%` } : undefined}
+            />
+          </div>
+          <span className="progress-bar__label">
+            {phase === "uploading"
+              ? `Uploading… ${Math.round(uploadPct * 100)}%`
+              : "Parsing PDF structure — extracting categories, sub-categories, and items…"}
+          </span>
+        </div>
+      )}
 
       {error && (
         <p className="muted" style={{ color: "var(--critical)" }}>

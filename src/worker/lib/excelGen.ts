@@ -4,6 +4,33 @@ import {
   getFormulaDefinition,
   type RowColumns,
 } from "./formulas";
+import { readImageDimensions } from "./imageDimensions";
+
+/** Target on-sheet display box for an embedded drawing, in pixels.
+ * The image is scaled to fit inside this box preserving its aspect
+ * ratio — never stretched to fill it, which is what a plain cell-range
+ * anchor does by default and was distorting every embedded blueprint. */
+const IMAGE_MAX_WIDTH_PX = 280;
+const IMAGE_MAX_HEIGHT_PX = 260;
+const DEFAULT_ROW_HEIGHT_PX = 20;
+const IMAGE_ANCHOR_COL = 16; // column Q (0-indexed), right of the data table
+
+function computeImageDisplaySize(
+  natural: { width: number; height: number } | null
+): { width: number; height: number } {
+  if (!natural || natural.width <= 0 || natural.height <= 0) {
+    return { width: IMAGE_MAX_WIDTH_PX, height: IMAGE_MAX_HEIGHT_PX };
+  }
+  const scale = Math.min(
+    IMAGE_MAX_WIDTH_PX / natural.width,
+    IMAGE_MAX_HEIGHT_PX / natural.height,
+    1 // never upscale a small source image past its native size
+  );
+  return {
+    width: Math.round(natural.width * scale),
+    height: Math.round(natural.height * scale),
+  };
+}
 
 /** Column layout for the generated BV AWAL sheet — see Section 4.1. */
 const COL = {
@@ -63,7 +90,6 @@ export interface GenerateWorkbookInput {
 
 const HEADER_ROW = 3;
 const FIRST_DATA_ROW = 5;
-const ROWS_PER_IMAGE = 3; // image spans ~3 rows tall next to its entry header
 
 function writeHeader(sheet: ExcelJS.Worksheet, projectName: string) {
   sheet.getCell("A1").value = "BACKUP VOLUME AWAL (BV AWAL)";
@@ -164,7 +190,7 @@ function writeEntry(
       : 0;
   sheet.getCell(`${COL.volumeTerpasang}${entryHeaderRow}`).font = { bold: true };
 
-  return Math.max(row, entryHeaderRow + ROWS_PER_IMAGE) + 1; // blank spacer row after each entry
+  return row; // first free row right after this entry's last component
 }
 
 export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Promise<ArrayBuffer> {
@@ -175,36 +201,49 @@ export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Prom
   const sheet = workbook.addWorksheet("BV AWAL");
   writeHeader(sheet, input.projectName);
 
+  // Precompute each entry's image display size once (aspect-ratio-preserving,
+  // never stretched) so the row-reservation pass can size the row block to
+  // fit the image, not just the component rows.
+  const imageSizes = input.entries.map((entry) =>
+    entry.imageBuffer ? computeImageDisplaySize(readImageDimensions(entry.imageBuffer)) : null
+  );
+
   let currentRow = FIRST_DATA_ROW;
-  const entryHeaderRows: number[] = [];
   const componentRowOfEntry = new Map<number, number>();
 
   // First pass: reserve header rows so "sama dengan <item>" cross-refs
   // (which may point forward or backward) can resolve on the second pass.
+  // Reserve enough rows for whichever is taller: the component list, or
+  // the image at its real aspect ratio.
   const reservedRows: number[] = [];
-  for (const entry of input.entries) {
+  input.entries.forEach((entry, i) => {
     reservedRows.push(currentRow);
-    const rowsNeeded = Math.max(entry.components.length, 1) + 2;
-    currentRow += rowsNeeded;
-  }
+    const componentRows = Math.max(entry.components.length, 1) + 1;
+    const imageRows = imageSizes[i]
+      ? Math.ceil(imageSizes[i]!.height / DEFAULT_ROW_HEIGHT_PX) + 1
+      : 0;
+    currentRow += Math.max(componentRows, imageRows) + 1; // + spacer row after
+  });
   input.entries.forEach((_, i) => componentRowOfEntry.set(i, reservedRows[i]));
 
-  currentRow = FIRST_DATA_ROW;
   input.entries.forEach((entry, i) => {
     const headerRow = reservedRows[i];
-    entryHeaderRows.push(headerRow);
     writeEntry(sheet, entry, headerRow, componentRowOfEntry);
 
-    if (entry.imageBuffer) {
+    const displaySize = imageSizes[i];
+    if (entry.imageBuffer && displaySize) {
       const imageId = workbook.addImage({
         buffer: entry.imageBuffer as any,
         extension: entry.imageExtension ?? "png",
       });
-      const anchorToRow = headerRow + ROWS_PER_IMAGE;
-      // "Q{row}:U{row}" — anchored a few columns right of the data table,
-      // spanning the entry's row block. String ranges are the simplest
-      // ExcelJS anchor form and are what the Workers-runtime spike verified.
-      sheet.addImage(imageId, `Q${headerRow}:U${anchorToRow}`);
+      // Anchored at a fixed top-left cell with an explicit pixel size —
+      // this scales the image to its real aspect ratio instead of
+      // stretching it to fill a cell range (the earlier, distorting
+      // approach). Row is 0-indexed for ExcelJS's position anchor.
+      sheet.addImage(imageId, {
+        tl: { col: IMAGE_ANCHOR_COL, row: headerRow - 1 },
+        ext: { width: displaySize.width, height: displaySize.height },
+      } as ExcelJS.ImagePosition);
     }
   });
 

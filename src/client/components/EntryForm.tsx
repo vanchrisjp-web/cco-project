@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { api, type ComponentDraft, type FormulaTemplate, type WorkItem } from "../api";
+import { WorkItemPicker } from "./WorkItemPicker";
 
 const emptyComponent = (rumus: string): ComponentDraft => ({
   formulaRumus: rumus,
@@ -31,7 +32,6 @@ export function EntryForm({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageR2Key, setImageR2Key] = useState<string | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [workItemFilter, setWorkItemFilter] = useState("");
   const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
   const [notasi, setNotasi] = useState("");
   const [components, setComponents] = useState<ComponentDraft[]>([
@@ -40,12 +40,6 @@ export function EntryForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestingIndex, setSuggestingIndex] = useState<number | null>(null);
-
-  const filteredWorkItems = useMemo(() => {
-    if (!workItemFilter.trim()) return workItems.slice(0, 20);
-    const q = workItemFilter.toLowerCase();
-    return workItems.filter((w) => w.path.toLowerCase().includes(q)).slice(0, 20);
-  }, [workItemFilter, workItems]);
 
   async function handleImageChange(file: File | null) {
     setImageFile(file);
@@ -103,7 +97,6 @@ export function EntryForm({
       setImageR2Key(null);
       setImagePreviewUrl(null);
       setSelectedWorkItem(null);
-      setWorkItemFilter("");
       setNotasi("");
       setComponents([emptyComponent(formulas[0]?.rumus ?? "U")]);
       onSubmitted();
@@ -131,33 +124,8 @@ export function EntryForm({
       />
       {imagePreviewUrl && <img className="image-preview" src={imagePreviewUrl} alt="Selected drawing" />}
 
-      <label>Work item</label>
-      <input
-        type="text"
-        placeholder="Search the parsed work-item list…"
-        value={selectedWorkItem ? selectedWorkItem.path : workItemFilter}
-        onChange={(e) => {
-          setSelectedWorkItem(null);
-          setWorkItemFilter(e.target.value);
-        }}
-      />
-      {!selectedWorkItem && workItemFilter && (
-        <ul className="entry-list" style={{ marginTop: "0.4rem", maxHeight: "12rem", overflowY: "auto" }}>
-          {filteredWorkItems.map((w) => (
-            <li
-              key={w.id}
-              style={{ cursor: "pointer" }}
-              onClick={() => {
-                setSelectedWorkItem(w);
-                setWorkItemFilter("");
-              }}
-            >
-              <span className="entry-title">{w.path}</span>
-            </li>
-          ))}
-          {filteredWorkItems.length === 0 && <li className="muted">No matches</li>}
-        </ul>
-      )}
+      <label>Work item (Category → Sub-category → Item, from the parsed BQ)</label>
+      <WorkItemPicker workItems={workItems} selected={selectedWorkItem} onSelect={setSelectedWorkItem} />
 
       <label>Notasi (optional legend)</label>
       <input type="text" value={notasi} onChange={(e) => setNotasi(e.target.value)} />

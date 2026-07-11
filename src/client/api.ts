@@ -64,6 +64,46 @@ export const api = {
     );
   },
 
+  /**
+   * Same endpoint as `uploadBq`, but over XMLHttpRequest instead of fetch so
+   * we get real byte-level upload progress (fetch has no upload-progress
+   * event). `onUploadProgress` reports the genuine send fraction (0-1); once
+   * it hits 1 the server is parsing and there is no further granular signal
+   * to report, so the caller should switch to an indeterminate state.
+   */
+  uploadBqWithProgress: (
+    sessionId: string,
+    file: File,
+    mode: "free" | "accurate",
+    onUploadProgress?: (fraction: number) => void
+  ) => {
+    const form = new FormData();
+    form.append("file", file);
+    return new Promise<{ mode: string; itemCount: number }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/sessions/${sessionId}/bq?mode=${mode}`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onUploadProgress) onUploadProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        let body: any = null;
+        try {
+          body = JSON.parse(xhr.responseText);
+        } catch {
+          // fall through to statusText-based error below
+        }
+        if (xhr.status >= 200 && xhr.status < 300 && body) {
+          resolve(body);
+        } else {
+          const message = body && typeof body.error === "string" ? body.error : xhr.statusText || "Upload failed";
+          reject(new Error(message));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.send(form);
+    });
+  },
+
   listWorkItems: (sessionId: string) =>
     json<WorkItem[]>(fetch(`/api/sessions/${sessionId}/work-items`)),
 
