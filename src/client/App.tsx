@@ -135,7 +135,13 @@ export default function App() {
 
       <main className="app-main">
         <section id="section-breakdown" style={{ scrollMarginTop: "1.5rem" }}>
-          {breakdownExpanded || workItems.length === 0 ? (
+          {/* UploadBq stays mounted at all times — even while collapsed —
+              so its own state (the file that was selected, the "N items
+              parsed" success message) survives collapsing and re-expanding.
+              Conditionally rendering it here instead would unmount it on
+              collapse and hand back a blank instance on re-expand, which is
+              exactly the "my upload disappeared" bug this replaced. */}
+          <div style={{ display: breakdownExpanded || workItems.length === 0 ? "block" : "none" }}>
             <UploadBq
               sessionId={session.id}
               onParsed={(count) => {
@@ -144,7 +150,8 @@ export default function App() {
               }}
               onProjectNameSuggested={handleProjectNameSuggested}
             />
-          ) : (
+          </div>
+          {!breakdownExpanded && workItems.length > 0 && (
             <motion.button
               className="breakdown-summary"
               onClick={() => setBreakdownExpanded(true)}
@@ -160,7 +167,7 @@ export default function App() {
                 <strong>{workItems.length} work items</strong> parsed from the Breakdown
               </span>
               <span className="breakdown-summary__action">
-                Replace <ChevronDown size={14} />
+                Show <ChevronDown size={14} />
               </span>
             </motion.button>
           )}

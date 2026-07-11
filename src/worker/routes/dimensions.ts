@@ -47,6 +47,7 @@ dimensionsRoute.post("/sessions/:sessionId/suggest-dimensions", async (c) => {
       max_tokens: 512,
     });
     const suggestion = extractJson(result.description ?? result.response ?? "");
+    normalizePanjangLebar(suggestion);
     return c.json({ mode, suggestion, fields: def.fields });
   }
 
@@ -64,7 +65,12 @@ dimensionsRoute.post("/sessions/:sessionId/suggest-dimensions", async (c) => {
 Numeric dimension callouts strongly take priority over grid counting whenever they exist — only fall back to counting grid/tile squares if truly no usable dimension line can be found for the target region. When reading dimension callouts, a drawing usually has more than one number printed near the target region — distinguish between them:
 - The OVERALL dimension lines are full extension lines that run along an entire outer edge of the highlighted/target region, typically with arrowheads or tick marks at both ends and positioned just outside the shape (e.g. along its top edge and its side edge). These give the overall panjang and lebar.
 - Small numbers near a circled tag, door-swing arc, or fixture symbol INSIDE the region (e.g. a 2-3 digit label next to a door or equipment mark) are local annotations for that fixture, NOT the overall dimension — ignore these when determining panjang/lebar.
-By convention, "panjang" is the larger of the two overall dimensions and "lebar" the smaller one, regardless of which is drawn horizontally or vertically on the page.`;
+By convention, "panjang" is the larger of the two overall dimensions and "lebar" the smaller one, regardless of which is drawn horizontally or vertically on the page.
+
+Dimension text running along a vertical/side extension line is usually rotated 90 degrees on the page, which makes individual digits genuinely harder to read correctly than horizontal text — slow down and read it digit by digit rather than skimming, and double-check your reading before answering. Before finalizing, sanity-check both values:
+1. Digit count — dimension callouts on this type of drawing are normally 3-4 digit millimeter values (e.g. 1853, 3391, 6140). If one value you read has noticeably fewer digits than the other overall dimension (e.g. one reads as 4 digits like "1853" and the other as only 1-2 digits like "34"), you almost certainly cut off digits from a rotated number — look again at the full extension line before answering, expecting another 3-4 digit value.
+2. Proportion — compare the ratio of your two values against how the highlighted region actually looks in the image (clearly taller than wide, wider than tall, or roughly square). If your numbers imply a drastically different shape than what the region visually looks like, you likely misread one of them — re-examine it.
+If, even after re-checking, you still cannot confidently read a digit, return null for that field rather than forcing a guess — a blank field is safer than a wrong number, since every suggestion is reviewed manually before use.`;
 
   const instruction = requestedDef
     ? `This is a crop from an architectural or structural drawing, for a work item already using the "${requestedDef.rumus}" formula (${requestedDef.label}). Read the dimension callouts (numbers with extension/dimension lines) for: ${requestedDef.fields.join(", ")}. Dimensions are typically in millimeters — convert to meters (divide by 1000) for panjang/lebar/tinggi.${targetRegionGuidance}
@@ -117,15 +123,33 @@ Reply with ONLY a JSON object with exactly these keys:
   const suggestedRumus: string | undefined = typeof parsed.rumus === "string" ? parsed.rumus : undefined;
   const resolvedDef = requestedDef ?? (suggestedRumus ? getFormulaDefinition(suggestedRumus) : undefined);
 
+  const dimensions = (parsed.dimensions as Record<string, number | null>) ?? {};
+  normalizePanjangLebar(dimensions);
+
   return c.json({
     mode,
-    suggestion: (parsed.dimensions as Record<string, number | null>) ?? {},
+    suggestion: dimensions,
     fields: resolvedDef?.fields ?? [],
     suggestedFormula: requestedDef ? undefined : resolvedDef?.rumus ?? null,
     method: typeof parsed.method === "string" ? parsed.method : "unknown",
     note: typeof parsed.note === "string" ? parsed.note : undefined,
   });
 });
+
+/**
+ * The vision model reliably reads the two overall edge values correctly but
+ * inconsistently applies the "panjang = larger value" convention itself —
+ * observed swapping panjang/lebar even while its own note describes the
+ * correct order. Every formula in FORMULA_LIBRARY that uses both fields
+ * (P×L, P+L, etc.) is symmetric in panjang/lebar, so enforcing the
+ * convention here is a safe, deterministic fix rather than another prompt
+ * tweak asking the model to compare two numbers correctly.
+ */
+function normalizePanjangLebar(dims: Record<string, number | null>): void {
+  if (typeof dims.panjang === "number" && typeof dims.lebar === "number" && dims.panjang < dims.lebar) {
+    [dims.panjang, dims.lebar] = [dims.lebar, dims.panjang];
+  }
+}
 
 function extractJson(text: string): Record<string, any> {
   const match = text.match(/\{[\s\S]*\}/);
