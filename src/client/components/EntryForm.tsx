@@ -44,6 +44,7 @@ export function EntryForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestingIndex, setSuggestingIndex] = useState<number | null>(null);
+  const [suggestionNotes, setSuggestionNotes] = useState<Record<number, string>>({});
 
   async function handleImageChange(file: File | null) {
     setImageFile(file);
@@ -70,14 +71,33 @@ export function EntryForm({
   async function handleSuggest(index: number, mode: "free" | "accurate") {
     if (!imageR2Key) return;
     setSuggestingIndex(index);
+    setSuggestionNotes((prev) => ({ ...prev, [index]: "" }));
     try {
-      const { suggestion } = await api.suggestDimensions(
+      // Accurate mode omits formulaRumus so Claude can pick the best-fit
+      // formula from the library too, not just fill in dimensions for one
+      // already chosen — free mode still needs the caller's own formula
+      // since a small vision model isn't asked to choose from 14 options.
+      const result = await api.suggestDimensions(
         sessionId,
         imageR2Key,
-        components[index].formulaRumus,
-        mode
+        mode === "free" ? components[index].formulaRumus : undefined,
+        mode,
+        selectedWorkItem?.description
       );
-      updateComponent(index, suggestion as Partial<ComponentDraft>);
+      const patch: Partial<ComponentDraft> = { ...result.suggestion };
+      if (result.suggestedFormula && getFormulaDefinition(result.suggestedFormula)) {
+        patch.formulaRumus = result.suggestedFormula;
+      }
+      updateComponent(index, patch);
+
+      const methodLabel =
+        result.method === "grid_count"
+          ? "Detected by counting grid squares (no printed dimensions found)"
+          : result.method === "unknown"
+            ? "Low confidence"
+            : null;
+      const note = [methodLabel, result.note].filter(Boolean).join(" — ");
+      if (note) setSuggestionNotes((prev) => ({ ...prev, [index]: note }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -105,6 +125,7 @@ export function EntryForm({
       setNotasi("");
       setVolumeAwal(null);
       setComponents([emptyComponent(formulas[0]?.rumus ?? "U")]);
+      setSuggestionNotes({});
       onSubmitted();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -228,7 +249,7 @@ export function EntryForm({
                       onClick={() => handleSuggest(i, "free")}
                     >
                       {suggestingIndex === i ? <Loader2 size={15} className="spin" /> : <Wand2 size={15} />}
-                      {suggestingIndex === i ? "Reading…" : "Suggest from image (free)"}
+                      {suggestingIndex === i ? "Reading…" : "Suggest dimensions (free)"}
                     </button>
                     <button
                       className="ghost"
@@ -236,11 +257,19 @@ export function EntryForm({
                       onClick={() => handleSuggest(i, "accurate")}
                     >
                       <Wand2 size={15} />
-                      Suggest (high-accuracy)
+                      Suggest formula + dimensions (high-accuracy)
                     </button>
-                    <span className="muted">Always review before submit — never auto-accepted.</span>
                   </div>
                 )}
+                {suggestionNotes[i] && (
+                  <p className="muted" style={{ marginTop: "0.4rem", color: "var(--warn)" }}>
+                    {suggestionNotes[i]}
+                  </p>
+                )}
+                <p className="muted" style={{ marginTop: "0.4rem" }}>
+                  Always review before submit — never auto-accepted. Some drawings have no printed
+                  measurements at all; if suggestions come back empty, enter dimensions manually.
+                </p>
               </>
             ) : (
               <>

@@ -129,17 +129,31 @@ export const api = {
 
   imageUrl: (r2Key: string) => `/api/images/${r2Key}`,
 
+  /**
+   * `formulaRumus` is optional in accurate mode: omit it to let Claude pick
+   * the best-fit formula from the library too (returned as
+   * `suggestedFormula`), not just fill dimensions for one already chosen.
+   * Free mode always requires a formula — a small vision model isn't
+   * asked to also choose from 14 options.
+   */
   suggestDimensions: (
     sessionId: string,
     imageR2Key: string,
-    formulaRumus: string,
-    mode: "free" | "accurate"
+    formulaRumus: string | undefined,
+    mode: "free" | "accurate",
+    workItemDescription?: string
   ) =>
-    json<{ suggestion: Record<string, number | null>; fields: string[] }>(
+    json<{
+      suggestion: Record<string, number | null>;
+      fields: string[];
+      suggestedFormula?: string | null;
+      method?: "dimension_callout" | "grid_count" | "unknown";
+      note?: string;
+    }>(
       fetch(`/api/sessions/${sessionId}/suggest-dimensions?mode=${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageR2Key, formulaRumus }),
+        body: JSON.stringify({ imageR2Key, formulaRumus, workItemDescription }),
       })
     ),
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
-import { CheckCircle2, DraftingCompass } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { CheckCircle2, Download, DraftingCompass, FileStack, PencilRuler, ShieldCheck } from "lucide-react";
 import { api, type EntryRecord, type FormulaTemplate, type WorkItem } from "./api";
 import { UploadBq } from "./components/UploadBq";
 import { EntryForm } from "./components/EntryForm";
@@ -9,9 +9,24 @@ import { ExportPanel } from "./components/ExportPanel";
 
 const DEFAULT_PROJECT_NAME = "Untitled project";
 
-const panelMotion = {
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0 },
+type Tab = "breakdown" | "build" | "entries";
+
+const TAB_META: Record<Tab, { title: string; description: string }> = {
+  breakdown: {
+    title: "Upload the Breakdown",
+    description:
+      "Upload the project's Bill of Quantity (Breakdown) PDF. It's parsed into a hierarchical list of work items — category, sub-category, item — used to match drawings in the next step.",
+  },
+  build: {
+    title: "Build a backup entry",
+    description:
+      "Match a blueprint drawing to a work item, pick the formula that fits its shape, and enter or auto-detect its dimensions. Volume Terpasang is always computed automatically.",
+  },
+  entries: {
+    title: "Entries & export",
+    description:
+      "Review everything accumulated in this session, run a QA pass, and download the finished BV AWAL workbook.",
+  },
 };
 
 export default function App() {
@@ -20,6 +35,7 @@ export default function App() {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [formulas, setFormulas] = useState<FormulaTemplate[]>([]);
   const [entries, setEntries] = useState<EntryRecord[]>([]);
+  const [tab, setTab] = useState<Tab>("breakdown");
 
   useEffect(() => {
     api.createSession(DEFAULT_PROJECT_NAME).then((s) => {
@@ -66,108 +82,120 @@ export default function App() {
     );
   }
 
+  const meta = TAB_META[tab];
+
   return (
-    <div>
-      <header className="app-header">
-        <div className="app-header__glow" />
-        <div className="app-header__mark">
-          <span className="app-header__mark-glyph">
-            <DraftingCompass size={22} />
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <div className="sidebar-brand">
+          <span className="sidebar-brand__glyph">
+            <DraftingCompass size={18} />
           </span>
-          <div className="app-header__titles">
-            <h1>BV AWAL Generator</h1>
-            <input
-              className="project-name-input"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              onBlur={(e) => saveProjectName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              }}
-              aria-label="Project name"
-              placeholder="Name this project…"
-            />
+          <div>
+            <div className="sidebar-brand__name">BV AWAL Generator</div>
+            <div className="sidebar-brand__tag">Milestone 1</div>
           </div>
         </div>
-        <div className="app-header__meta">
-          <span className="subtitle">Milestone 1 · backup-volume workbook builder</span>
-          <span className="app-header__stamp">SESSION {session.id.replace(/^sess_/, "").slice(0, 10).toUpperCase()}</span>
-        </div>
-      </header>
-
-      <motion.div className="status-bar" initial="initial" animate="animate">
-        <motion.div
-          className={"status-chip" + (workItems.length > 0 ? " status-chip--done" : "")}
-          variants={panelMotion}
-          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <span className="status-chip__icon">{workItems.length > 0 ? <CheckCircle2 size={16} /> : "1"}</span>
-          <span>
-            <span className="status-chip__label">Breakdown</span>
-            <span className="status-chip__value">
-              {workItems.length > 0 ? `${workItems.length} items parsed` : "Not uploaded yet"}
-            </span>
-          </span>
-        </motion.div>
-        <motion.div
-          className={"status-chip" + (entries.length > 0 ? " status-chip--done" : "")}
-          variants={panelMotion}
-          transition={{ duration: 0.3, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <span className="status-chip__icon">{entries.length > 0 ? <CheckCircle2 size={16} /> : "2"}</span>
-          <span>
-            <span className="status-chip__label">Backup entries</span>
-            <span className="status-chip__value">
-              {entries.length > 0 ? `${entries.length} accumulated` : "None added yet"}
-            </span>
-          </span>
-        </motion.div>
-        <motion.div
-          className={"status-chip" + (entries.length > 0 ? " status-chip--ready" : "")}
-          variants={panelMotion}
-          transition={{ duration: 0.3, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <span className="status-chip__icon">3</span>
-          <span>
-            <span className="status-chip__label">Export</span>
-            <span className="status-chip__value">
-              {entries.length > 0 ? "Ready to download" : "Add at least 1 entry"}
-            </span>
-          </span>
-        </motion.div>
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}>
-        <UploadBq
-          sessionId={session.id}
-          onParsed={() => refreshWorkItems(session.id)}
-          onProjectNameSuggested={handleProjectNameSuggested}
+        <input
+          className="project-name-input"
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          onBlur={(e) => saveProjectName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          aria-label="Project name"
+          placeholder="Name this project…"
         />
-      </motion.div>
 
-      <div className="layout">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <EntryForm
-            sessionId={session.id}
-            workItems={workItems}
-            formulas={formulas}
-            existingEntries={entries}
-            onSubmitted={() => refreshEntries(session.id)}
-          />
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <EntryList entries={entries} onDeleted={() => refreshEntries(session.id)} />
-          <ExportPanel sessionId={session.id} entryCount={entries.length} />
-        </motion.div>
-      </div>
+        <div className="sidebar-section-label">Workspace</div>
+        <nav className="sidebar-nav">
+          <button
+            className={"sidebar-nav__item" + (tab === "breakdown" ? " sidebar-nav__item--active" : "")}
+            onClick={() => setTab("breakdown")}
+          >
+            <span className={"sidebar-nav__icon" + (workItems.length > 0 ? " sidebar-nav__icon--done" : "")}>
+              {workItems.length > 0 ? <CheckCircle2 size={13} /> : "1"}
+            </span>
+            <span className="sidebar-nav__label">Breakdown</span>
+            <span className="sidebar-nav__meta">{workItems.length > 0 ? workItems.length : "—"}</span>
+          </button>
+          <button
+            className={"sidebar-nav__item" + (tab === "build" ? " sidebar-nav__item--active" : "")}
+            onClick={() => setTab("build")}
+          >
+            <span className="sidebar-nav__icon">
+              <PencilRuler size={12} />
+            </span>
+            <span className="sidebar-nav__label">Build entry</span>
+          </button>
+          <button
+            className={"sidebar-nav__item" + (tab === "entries" ? " sidebar-nav__item--active" : "")}
+            onClick={() => setTab("entries")}
+          >
+            <span className={"sidebar-nav__icon" + (entries.length > 0 ? " sidebar-nav__icon--done" : "")}>
+              {entries.length > 0 ? <FileStack size={13} /> : "3"}
+            </span>
+            <span className="sidebar-nav__label">Entries</span>
+            <span className="sidebar-nav__meta">{entries.length > 0 ? entries.length : "—"}</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <p>
+            <ShieldCheck size={13} style={{ verticalAlign: "-2px", marginRight: "0.3rem" }} />
+            QA and export live in the Entries tab.
+          </p>
+          <button className="secondary" disabled={entries.length === 0} onClick={() => setTab("entries")}>
+            <Download size={14} />
+            Go to export
+          </button>
+          <span className="stamp">SESSION {session.id.replace(/^sess_/, "").slice(0, 10).toUpperCase()}</span>
+        </div>
+      </aside>
+
+      <main className="app-main">
+        <div className="main-header">
+          <h2>{meta.title}</h2>
+          <p>{meta.description}</p>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {tab === "breakdown" && (
+              <UploadBq
+                sessionId={session.id}
+                onParsed={(count) => {
+                  refreshWorkItems(session.id);
+                  if (count > 0) setTab("build");
+                }}
+                onProjectNameSuggested={handleProjectNameSuggested}
+              />
+            )}
+            {tab === "build" && (
+              <EntryForm
+                sessionId={session.id}
+                workItems={workItems}
+                formulas={formulas}
+                existingEntries={entries}
+                onSubmitted={() => refreshEntries(session.id)}
+              />
+            )}
+            {tab === "entries" && (
+              <>
+                <EntryList entries={entries} onDeleted={() => refreshEntries(session.id)} />
+                <ExportPanel sessionId={session.id} entryCount={entries.length} />
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </main>
     </div>
   );
 }

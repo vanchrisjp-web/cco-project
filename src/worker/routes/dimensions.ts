@@ -1,81 +1,128 @@
 import { Hono } from "hono";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../types";
-import { getFormulaDefinition } from "../../shared/formulas";
+import { FORMULA_LIBRARY, getFormulaDefinition } from "../../shared/formulas";
 
 export const dimensionsRoute = new Hono<{ Bindings: Env }>();
 
 /**
- * Suggests dimension values by reading the uploaded drawing image —
- * Section 4.4.2. This is ALWAYS a suggestion: the frontend must pre-fill
- * an editable form and require explicit user confirmation before the
- * entry is submitted. Never wire this to auto-submit.
+ * Suggests dimension values (and, in accurate mode, the formula itself) by
+ * reading the uploaded drawing image — Section 4.4.2. This is ALWAYS a
+ * suggestion: the frontend must pre-fill an editable form and require
+ * explicit user confirmation before the entry is submitted. Never wire
+ * this to auto-submit.
  *
  * ?mode=free (default): Cloudflare Workers AI vision model, no extra
- * vendor integration, included in the 10,000 free Neurons/day. Expect
- * lower accuracy on rotated dimension text or dense drawings.
- * ?mode=accurate: Claude API vision (opt-in, small per-image cost) —
- * verified during this project's own analysis to correctly read mm
- * dimension callouts off a real blueprint crop.
+ * vendor integration, included in the 10,000 free Neurons/day. Reads
+ * dimensions for a formula the user has already picked — asking a small
+ * vision model to also choose from a 14-formula library is a much harder
+ * reasoning task better reserved for the paid tier.
+ * ?mode=accurate: Claude API vision (opt-in, small per-image cost) — also
+ * suggests which RUMUS best fits the drawing when the caller doesn't pin
+ * one down, and falls back to counting grid/tile squares when no numeric
+ * dimension callouts are visible at all (e.g. a plain tile floor plan with
+ * a highlighted area but no printed measurements).
  */
 dimensionsRoute.post("/sessions/:sessionId/suggest-dimensions", async (c) => {
   const mode = c.req.query("mode") === "accurate" ? "accurate" : "free";
-  const body = await c.req.json<{ imageR2Key: string; formulaRumus: string }>();
-
-  const def = getFormulaDefinition(body.formulaRumus);
-  if (!def) return c.json({ error: `Unknown formula: ${body.formulaRumus}` }, 400);
+  const body = await c.req.json<{ imageR2Key: string; formulaRumus?: string; workItemDescription?: string }>();
 
   const imageObject = await c.env.FILES.get(body.imageR2Key);
   if (!imageObject) return c.json({ error: "Image not found" }, 404);
   const imageBuffer = await imageObject.arrayBuffer();
   const contentType = imageObject.httpMetadata?.contentType ?? "image/png";
+  const base64 = arrayBufferToBase64(imageBuffer);
 
-  const instruction = `This is a crop from an architectural or structural drawing. Read the dimension callouts (the numbers with extension/dimension lines) and identify the values for: ${def.fields.join(", ")}. Dimensions on the drawing are typically in millimeters — convert to meters (divide by 1000) for panjang/lebar/tinggi. Reply with ONLY a JSON object with exactly these keys: ${JSON.stringify(def.fields)}. Use null for any field you can't confidently read.`;
+  if (mode === "free") {
+    // Unchanged: dimensions only, for a formula the user has already picked.
+    if (!body.formulaRumus) return c.json({ error: "Free mode requires a formula to already be selected" }, 400);
+    const def = getFormulaDefinition(body.formulaRumus);
+    if (!def) return c.json({ error: `Unknown formula: ${body.formulaRumus}` }, 400);
 
-  let suggestion: Record<string, number | null> = {};
+    const instruction = `This is a crop from an architectural or structural drawing. Read the dimension callouts (the numbers with extension/dimension lines) and identify the values for: ${def.fields.join(", ")}. Dimensions on the drawing are typically in millimeters — convert to meters (divide by 1000) for panjang/lebar/tinggi. Reply with ONLY a JSON object with exactly these keys: ${JSON.stringify(def.fields)}. Use null for any field you can't confidently read.`;
 
-  if (mode === "accurate") {
-    if (!c.env.ANTHROPIC_API_KEY) {
-      return c.json({ error: "High-accuracy mode requires ANTHROPIC_API_KEY to be configured" }, 400);
-    }
-    const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
-    const base64 = arrayBufferToBase64(imageBuffer);
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 500,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: contentType as any, data: base64 },
-            },
-            { type: "text", text: instruction },
-          ],
-        },
-      ],
-    });
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (textBlock && textBlock.type === "text") {
-      suggestion = extractJson(textBlock.text);
-    }
-  } else {
-    const base64 = arrayBufferToBase64(imageBuffer);
-    // Model name per Cloudflare Workers AI's vision catalog — verify against
-    // the current catalog at build time; swap here if it's been superseded.
     const result: any = await c.env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
       image: Array.from(new Uint8Array(imageBuffer)),
       prompt: instruction,
       max_tokens: 512,
     });
-    suggestion = extractJson(result.description ?? result.response ?? "");
+    const suggestion = extractJson(result.description ?? result.response ?? "");
+    return c.json({ mode, suggestion, fields: def.fields });
   }
 
-  return c.json({ mode, suggestion, fields: def.fields });
+  if (!c.env.ANTHROPIC_API_KEY) {
+    return c.json({ error: "High-accuracy mode requires ANTHROPIC_API_KEY to be configured" }, 400);
+  }
+  const requestedDef = body.formulaRumus ? getFormulaDefinition(body.formulaRumus) : undefined;
+  if (body.formulaRumus && !requestedDef) return c.json({ error: `Unknown formula: ${body.formulaRumus}` }, 400);
+
+  const workItemContext = body.workItemDescription
+    ? `\n\nThe work item this drawing is for: "${body.workItemDescription}". If a module/tile size is stated there (e.g. "60/60" means 0.6m x 0.6m tiles, "80/80" means 0.8m x 0.8m), use it to convert a grid-square count into a real measurement instead of leaving it as a bare square count.`
+    : "";
+  const targetRegionGuidance = `\n\nThis crop may show more than one room or design element. If any region has a solid color fill (e.g. red, pink, orange) that contrasts with the rest of the drawing (which is normally just white/outlined), that fill marks the specific work item's target area — read or count dimensions for THAT region, not other outlined-only shapes, room labels, or fixtures shown elsewhere in the same crop.`;
+
+  const instruction = requestedDef
+    ? `This is a crop from an architectural or structural drawing, for a work item already using the "${requestedDef.rumus}" formula (${requestedDef.label}). Read the dimension callouts (numbers with extension/dimension lines) for: ${requestedDef.fields.join(", ")}. Dimensions are typically in millimeters — convert to meters (divide by 1000) for panjang/lebar/tinggi.${targetRegionGuidance}
+
+If NO numeric dimension callouts are visible at all, but the drawing shows a grid or tile pattern (e.g. floor tiles, ceiling grid) with a specific area highlighted, outlined, or colored, COUNT how many whole grid squares that area spans along each axis instead — state the counts and note that a per-square size still needs to be confirmed manually if none is printed on the drawing.${workItemContext}
+
+Reply with ONLY a JSON object with exactly these keys:
+{
+  "dimensions": { ${requestedDef.fields.map((f) => `"${f}": <number or null>`).join(", ")} },
+  "method": "dimension_callout" | "grid_count" | "unknown",
+  "note": "<one short sentence — especially explain if you used grid counting, or why a field is null>"
+}`
+    : `This is a crop from an architectural or structural drawing, matched to a construction work item that needs a Volume Bagian (sub-volume) formula and its dimensions identified.${targetRegionGuidance}
+
+First, decide which formula from this library best fits the shape of that target area:
+${FORMULA_LIBRARY.map((f) => `- "${f.rumus}": ${f.label} (needs: ${f.fields.join(", ")})`).join("\n")}
+
+Then read the dimension callouts (numbers with extension/dimension lines) for that formula's fields. Dimensions are typically in millimeters — convert to meters (divide by 1000) for panjang/lebar/tinggi.
+
+If NO numeric dimension callouts are visible at all, but the drawing shows a grid or tile pattern (e.g. floor tiles, ceiling grid) with a specific area highlighted, outlined, or colored, COUNT how many whole grid squares that area spans along each axis instead of giving up — state the counts in the note and note that a per-square size still needs confirming manually if none is printed on the drawing.${workItemContext}
+
+Reply with ONLY a JSON object with exactly these keys:
+{
+  "rumus": "<one of the exact formula strings above>",
+  "dimensions": { <that formula's fields, each a number or null> },
+  "method": "dimension_callout" | "grid_count" | "unknown",
+  "note": "<one short sentence — especially explain if you used grid counting, or why you couldn't determine something confidently>"
+}`;
+
+  const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 700,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: contentType as any, data: base64 } },
+          { type: "text", text: instruction },
+        ],
+      },
+    ],
+  });
+  const textBlock = response.content.find((b) => b.type === "text");
+  const parsed =
+    textBlock && textBlock.type === "text"
+      ? extractJson(textBlock.text)
+      : {};
+
+  const suggestedRumus: string | undefined = typeof parsed.rumus === "string" ? parsed.rumus : undefined;
+  const resolvedDef = requestedDef ?? (suggestedRumus ? getFormulaDefinition(suggestedRumus) : undefined);
+
+  return c.json({
+    mode,
+    suggestion: (parsed.dimensions as Record<string, number | null>) ?? {},
+    fields: resolvedDef?.fields ?? [],
+    suggestedFormula: requestedDef ? undefined : resolvedDef?.rumus ?? null,
+    method: typeof parsed.method === "string" ? parsed.method : "unknown",
+    note: typeof parsed.note === "string" ? parsed.note : undefined,
+  });
 });
 
-function extractJson(text: string): Record<string, number | null> {
+function extractJson(text: string): Record<string, any> {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return {};
   try {
