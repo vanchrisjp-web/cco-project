@@ -18,7 +18,7 @@ const SKIP_LINE =
 /**
  * Tier 1 — free, deterministic. Pulls raw text with unpdf (PDF.js compiled
  * for edge runtimes, no native Node deps) and applies rule-based pattern
- * matching on the structural markers catalogued from a real BQ PDF
+ * matching on the structural markers catalogued from a real breakdown PDF
  * (Section 4.3): Roman-numeral categories, decimal sub-headers, numbered
  * OR dash-bulleted items, item numbers that reset per section.
  *
@@ -75,7 +75,7 @@ export async function parseWorkItemsDeterministic(
       // the description (e.g. "... (R. Locker) 6.14 6.14 m2 357,500
       // 2,195,050"). Trim from the first run of "number number unit" onward
       // — best-effort only; Tier 3 (Claude API, table-aware) is the
-      // accuracy fallback for BQs where this trim misfires.
+      // accuracy fallback for breakdowns where this trim misfires.
       const description = rawDescription
         .replace(/\s+[\d.,]+\s+[\d.,]+\s+[a-zA-Z0-9']{1,4}\s+[\d.,]+.*$/, "")
         .trim();
@@ -94,6 +94,105 @@ export async function parseWorkItemsDeterministic(
   return items;
 }
 
+/** Claude's nested response shape — grouping by category/sub-category so
+ * that repeated breadcrumb text is written once per group instead of once
+ * per item. A flat "one full path per item" shape (the original design)
+ * bloated the response 3-4x on a breakdown with 150+ items, which was
+ * blowing the max_tokens budget and getting silently cut off mid-array —
+ * the root cause of "0 work items" on the high-accuracy path. */
+interface ClaudeCategoryBlock {
+  category: string;
+  subcategories: {
+    subcategory: string | null;
+    items: { no: string; description: string; unit: string | null }[];
+  }[];
+}
+
+function flattenClaudeBlocks(blocks: ClaudeCategoryBlock[]): ParsedWorkItem[] {
+  const items: ParsedWorkItem[] = [];
+  for (const block of blocks) {
+    if (!block || !Array.isArray(block.subcategories)) continue;
+    for (const sub of block.subcategories) {
+      if (!sub || !Array.isArray(sub.items)) continue;
+      for (const item of sub.items) {
+        if (!item?.description) continue;
+        const breadcrumbParts = [block.category, sub.subcategory].filter(Boolean) as string[];
+        const label = item.no ? `${item.no}. ${item.description}` : item.description;
+        items.push({
+          path: [...breadcrumbParts, label].join(" > "),
+          description: item.description,
+          unit: item.unit ?? null,
+          sourceCategory: block.category ?? null,
+        });
+      }
+    }
+  }
+  return items;
+}
+
+/**
+ * Extracts complete top-level JSON objects from a `[ {...}, {...}, ... ]`
+ * array's text, even if the array was truncated mid-object — every
+ * fully-formed object up to the truncation point is recovered instead of
+ * the whole result silently collapsing to zero the moment the closing `]`
+ * never arrives (which is exactly what a plain `JSON.parse` on the whole
+ * match does: throws, or the regex never matches an unterminated array).
+ */
+function extractCompleteObjects(text: string): unknown[] {
+  const start = text.indexOf("[");
+  if (start === -1) return [];
+
+  const results: unknown[] = [];
+  let depth = 0;
+  let objStart = -1;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        try {
+          results.push(JSON.parse(text.slice(objStart, i + 1)));
+        } catch {
+          // Malformed despite balanced braces shouldn't normally happen —
+          // skip it rather than let one bad object drop everything else.
+        }
+        objStart = -1;
+      }
+    } else if (ch === "]" && depth === 0) {
+      break;
+    }
+  }
+  return results;
+}
+
+export interface ClaudeParseResult {
+  items: ParsedWorkItem[];
+  /** True when the response was cut off before the array closed (either
+   * Claude's own stop_reason says so, or recovery had to kick in) — the
+   * items list may be an undercount, not a confirmed-complete result. */
+  truncated: boolean;
+}
+
 /**
  * Tier 3 — paid, opt-in "high-accuracy mode". Sends the PDF natively to
  * the Claude API and asks for the same structured extraction, letting the
@@ -105,7 +204,7 @@ export async function parseWorkItemsDeterministic(
 export async function parseWorkItemsWithClaude(
   pdfBuffer: ArrayBuffer,
   apiKey: string
-): Promise<ParsedWorkItem[]> {
+): Promise<ClaudeParseResult> {
   const client = new Anthropic({ apiKey });
   const base64 = arrayBufferToBase64(pdfBuffer);
 
@@ -122,15 +221,31 @@ export async function parseWorkItemsWithClaude(
           },
           {
             type: "text",
-            text: `This is a construction Bill of Quantity (BQ) document. Extract every real work item (a priced or plannable line item — not a category header, not a subtotal "JUMLAH" row, not a descriptive sub-line with no volume/unit of its own, not the explanatory paragraph text that sometimes precedes a section).
+            text: `This is a construction Breakdown (Bill of Quantity) document. Extract every real work item (a priced or plannable line item — not a category header, not a subtotal "JUMLAH" row, not a descriptive sub-line with no volume/unit of its own, not the explanatory paragraph text that sometimes precedes a section).
 
-For each work item return:
-- path: the full hierarchical breadcrumb, e.g. "V.1 PEKERJAAN LANTAI > 2. Pasang Lantai Keramik ... (R. Locker)" — item numbers reset per section, so always include the section path, not just the bare number.
-- description: the item's own text, without the leading number.
-- unit: the "SAT" unit of measure if shown (e.g. m2, m3, kg, unit, titik, ls), or null if not numeric/not shown (e.g. "by owner").
-- sourceCategory: the top-level Roman-numeral category this item belongs to.
+Group hierarchically instead of repeating the section path on every item — this document can have 100+ items and repeating full breadcrumbs blows the response size. Return ONLY compact JSON (no markdown fences, no commentary before or after) matching exactly this shape:
 
-Return ONLY a JSON array of objects with exactly these four keys: path, description, unit, sourceCategory.`,
+[
+  {
+    "category": "V PEKERJAAN ARSITEKTUR",
+    "subcategories": [
+      {
+        "subcategory": "V.1 PEKERJAAN LANTAI",
+        "items": [
+          { "no": "1", "description": "Pasang Lantai Keramik ... (R. Locker)", "unit": "m2" }
+        ]
+      }
+    ]
+  }
+]
+
+Rules:
+- "category": the top-level Roman-numeral section, e.g. "V PEKERJAAN ARSITEKTUR".
+- "subcategory": the decimal sub-header, e.g. "V.1 PEKERJAAN LANTAI", or null if this category has no sub-headers and items sit directly under it.
+- "no": the item's own number as printed (resets per section) — just the number, not repeated with a period.
+- "description": the item's own text, without the leading number.
+- "unit": the "SAT" unit of measure if shown (e.g. m2, m3, kg, unit, titik, ls), or null if not shown/not numeric (e.g. "by owner").
+- Keep description text exactly as printed — don't summarize or truncate it.`,
           },
         ],
       },
@@ -138,11 +253,22 @@ Return ONLY a JSON array of objects with exactly these four keys: path, descript
   });
 
   const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") return [];
+  const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
 
-  const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) return [];
-  return JSON.parse(jsonMatch[0]) as ParsedWorkItem[];
+  let blocks: ClaudeCategoryBlock[] = [];
+  let truncated = response.stop_reason === "max_tokens";
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) blocks = JSON.parse(jsonMatch[0]) as ClaudeCategoryBlock[];
+  } catch {
+    // Fall through to the truncation-tolerant recovery below.
+  }
+  if (blocks.length === 0 && text.includes("[")) {
+    blocks = extractCompleteObjects(text) as ClaudeCategoryBlock[];
+    if (blocks.length > 0) truncated = true;
+  }
+
+  return { items: flattenClaudeBlocks(blocks), truncated };
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {

@@ -103,7 +103,7 @@ export default function App() {
         >
           <span className="status-chip__icon">{workItems.length > 0 ? <CheckCircle2 size={16} /> : "1"}</span>
           <span>
-            <span className="status-chip__label">Bill of Quantity</span>
+            <span className="status-chip__label">Breakdown</span>
             <span className="status-chip__value">
               {workItems.length > 0 ? `${workItems.length} items parsed` : "Not uploaded yet"}
             </span>

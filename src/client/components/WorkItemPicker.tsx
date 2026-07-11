@@ -3,7 +3,7 @@ import { Check, Search, X } from "lucide-react";
 import type { WorkItem } from "../api";
 
 /**
- * Renders the BQ-derived work items as an actual grouped tree — Category
+ * Renders the Breakdown-derived work items as an actual grouped tree — Category
  * (Roman numeral, e.g. "V PEKERJAAN ARSITEKTUR") > Sub-category (e.g.
  * "V.1 PEKERJAAN LANTAI") > individual item — rather than a flat search
  * list of concatenated path strings. `path` already carries this
@@ -138,7 +138,7 @@ export function WorkItemPicker({
         <div className="work-item-picker__tree">
           {workItems.length === 0 && (
             <p className="muted" style={{ padding: "0.6rem" }}>
-              Upload a BQ PDF first — the list populates from Step 1.
+              Upload a Breakdown PDF first — the list populates from Step 1.
             </p>
           )}
           {workItems.length > 0 && totalMatches === 0 && (

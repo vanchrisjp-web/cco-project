@@ -56,11 +56,19 @@ sessionsRoute.post("/sessions/:id/bq", async (c) => {
     .run();
 
   let parsed;
+  let truncated = false;
   if (mode === "accurate") {
     if (!c.env.ANTHROPIC_API_KEY) {
       return c.json({ error: "High-accuracy mode requires ANTHROPIC_API_KEY to be configured" }, 400);
     }
-    parsed = await parseWorkItemsWithClaude(buffer, c.env.ANTHROPIC_API_KEY);
+    try {
+      const result = await parseWorkItemsWithClaude(buffer, c.env.ANTHROPIC_API_KEY);
+      parsed = result.items;
+      truncated = result.truncated;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `High-accuracy parsing failed (${detail}) — try Free mode instead.` }, 502);
+    }
   } else {
     parsed = await parseWorkItemsDeterministic(buffer);
   }
@@ -73,7 +81,7 @@ sessionsRoute.post("/sessions/:id/bq", async (c) => {
   );
   if (batch.length > 0) await c.env.DB.batch(batch);
 
-  return c.json({ mode, itemCount: parsed.length });
+  return c.json({ mode, itemCount: parsed.length, truncated });
 });
 
 sessionsRoute.get("/sessions/:id/work-items", async (c) => {

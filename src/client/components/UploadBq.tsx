@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileUp, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileUp, Loader2 } from "lucide-react";
 import { api } from "../api";
 import { Dropzone } from "./Dropzone";
 
@@ -35,7 +35,7 @@ export function UploadBq({
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"free" | "accurate">("free");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ itemCount: number; mode: string } | null>(null);
+  const [result, setResult] = useState<{ itemCount: number; mode: string; truncated?: boolean } | null>(null);
   const [phase, setPhase] = useState<ParsePhase>("idle");
   const [uploadPct, setUploadPct] = useState(0);
   const [parsePct, setParsePct] = useState(0);
@@ -78,14 +78,14 @@ export function UploadBq({
   return (
     <section className="panel">
       <div className="panel__eyebrow">
-        <span className="step-num">1</span> Bill of Quantity
+        <span className="step-num">1</span> Breakdown
       </div>
-      <h2>Upload the project's BQ PDF</h2>
+      <h2>Upload the project's Breakdown PDF</h2>
       <label>PDF file</label>
       <Dropzone
         accept="application/pdf"
         label="Click to upload or drag & drop"
-        hint="The Bill of Quantity PDF for this project"
+        hint="The Breakdown (Bill of Quantity) PDF for this project"
         file={file}
         onChange={setFile}
       />
@@ -138,14 +138,35 @@ export function UploadBq({
       )}
 
       {error && (
-        <p className="muted" style={{ color: "var(--critical)" }}>
+        <p className="muted" style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "var(--critical)" }}>
+          <AlertTriangle size={15} />
           {error}
         </p>
       )}
       {result && (
-        <p className="muted">
-          Parsed <strong>{result.itemCount}</strong> work items using the {result.mode} path.
-        </p>
+        <>
+          {result.itemCount > 0 ? (
+            <p className="muted" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <CheckCircle2 size={15} color="var(--good)" />
+              Parsed <strong>{result.itemCount}</strong> work items using the {result.mode} path.
+            </p>
+          ) : (
+            <p className="muted" style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "var(--critical)" }}>
+              <AlertTriangle size={15} />
+              No work items found.{" "}
+              {result.mode === "accurate"
+                ? "Try Free mode, or a smaller/simpler PDF."
+                : "Check the PDF has a recognizable Breakdown table."}
+            </p>
+          )}
+          {result.truncated && (
+            <p className="muted" style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "var(--warn)", marginTop: "0.3rem" }}>
+              <AlertTriangle size={15} />
+              The high-accuracy response was cut off partway through this document — the list above may be
+              incomplete. Free mode reads the whole document in one deterministic pass instead.
+            </p>
+          )}
+        </>
       )}
     </section>
   );

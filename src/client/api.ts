@@ -69,7 +69,7 @@ export const api = {
   uploadBq: (sessionId: string, file: File, mode: "free" | "accurate") => {
     const form = new FormData();
     form.append("file", file);
-    return json<{ mode: string; itemCount: number }>(
+    return json<{ mode: string; itemCount: number; truncated?: boolean }>(
       fetch(`/api/sessions/${sessionId}/bq?mode=${mode}`, { method: "POST", body: form })
     );
   },
@@ -89,7 +89,7 @@ export const api = {
   ) => {
     const form = new FormData();
     form.append("file", file);
-    return new Promise<{ mode: string; itemCount: number }>((resolve, reject) => {
+    return new Promise<{ mode: string; itemCount: number; truncated?: boolean }>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `/api/sessions/${sessionId}/bq?mode=${mode}`);
       xhr.upload.onprogress = (e) => {

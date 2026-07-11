@@ -219,9 +219,11 @@ function writeHeader(sheet: ExcelJS.Worksheet, projectName: string) {
 
 /** Splits "V PEKERJAAN ARSITEKTUR" -> ["V", "PEKERJAAN ARSITEKTUR"] so the
  * marker and name can go in separate cells, matching the reference sheet's
- * category/sub-category banner rows. */
+ * category/sub-category banner rows. Tier 1 never punctuates the roman
+ * numeral ("V", "V.1"); Tier 3 (Claude) sometimes adds a trailing period
+ * ("V.", "V.1.") — the optional trailing `\.?` here tolerates both. */
 function splitMarkerAndName(label: string): [string, string] {
-  const match = label.match(/^([IVXLCM]+(?:\.\d+)?)\s+(.*)$/);
+  const match = label.match(/^([IVXLCM]+\.?\d*\.?)\s+(.*)$/);
   return match ? [match[1], match[2]] : ["", label];
 }
 
@@ -248,6 +250,57 @@ function writeBanner(
   nameCell.font = font;
 }
 
+/** Numeric result for one component, independent of Excel — the same
+ * `evaluate()` used for the in-app live preview (shared/formulas.ts),
+ * reused here so every formula cell can carry a correct cached `result`
+ * alongside its formula string (see the comment on `resolveEntryResults`
+ * for why that cached value matters as much as the formula itself). */
+function computeComponentResult(comp: ComponentInput, entryResults: number[]): number {
+  if (comp.formulaRumus === CROSS_REFERENCE_RUMUS) {
+    return comp.sameAsEntryIndex != null ? entryResults[comp.sameAsEntryIndex] ?? 0 : 0;
+  }
+  const def = getFormulaDefinition(comp.formulaRumus);
+  return def ? comp.sign * def.evaluate(comp) : 0;
+}
+
+/**
+ * Resolves every entry's Volume Terpasang total as a plain number, up
+ * front, before any cell is written. Excel is supposed to recalculate a
+ * formula cell that has no cached value on open (`fullCalcOnLoad`), but
+ * files downloaded from a browser commonly open in Protected View, which
+ * skips calculation entirely until the user clicks "Enable Editing" — the
+ * cell just shows blank until then. Rather than depend on that, every
+ * formula cell below gets a real cached `result` so the correct number is
+ * visible immediately; the formula itself stays live and still
+ * recalculates normally on any future edit.
+ *
+ * Two passes because a "sama dengan <item>" component's value depends on
+ * another entry's total: pass 1 resolves every entry with no cross-ref
+ * component (the vast majority), pass 2 resolves entries that do, using
+ * whatever pass 1 (or an earlier entry in this same pass) already
+ * produced. A cross-ref chain pointing at a later, still-unresolved
+ * cross-ref entry falls back to 0 for just the cached value — the live
+ * formula is unaffected and settles to the right number the moment Excel
+ * recalculates.
+ */
+function resolveEntryResults(entries: EntryInput[]): number[] {
+  const results: number[] = new Array(entries.length).fill(0);
+  const resolved: boolean[] = new Array(entries.length).fill(false);
+
+  entries.forEach((entry, i) => {
+    if (entry.components.every((c) => c.formulaRumus !== CROSS_REFERENCE_RUMUS)) {
+      results[i] = entry.components.reduce((sum, c) => sum + computeComponentResult(c, results), 0);
+      resolved[i] = true;
+    }
+  });
+  entries.forEach((entry, i) => {
+    if (resolved[i]) return;
+    results[i] = entry.components.reduce((sum, c) => sum + computeComponentResult(c, results), 0);
+  });
+
+  return results;
+}
+
 /**
  * Builds one entry's row block: a header row (No/Uraian/Volume Terpasang/
  * Volume Awal/Deviasi) followed by one row per Volume Bagian component.
@@ -257,8 +310,10 @@ function writeBanner(
 function writeEntry(
   sheet: ExcelJS.Worksheet,
   entry: EntryInput,
+  entryIndex: number,
   entryHeaderRow: number,
-  componentRowOfEntry: Map<number, number> // entryIndex -> its header row, for cross-refs
+  componentRowOfEntry: Map<number, number>, // entryIndex -> its header row, for cross-refs
+  entryResults: number[] // entryIndex -> resolved Volume Terpasang total, for cached formula results
 ): number {
   sheet.getCell(`${COL.no}${entryHeaderRow}`).value = entry.no;
   sheet.getCell(`${COL.no}${entryHeaderRow}`).alignment = { horizontal: "center", vertical: "top" };
@@ -274,13 +329,15 @@ function writeEntry(
   let row = firstComponentRow;
 
   for (const comp of entry.components) {
+    const componentResult = computeComponentResult(comp, entryResults);
+
     if (comp.formulaRumus === CROSS_REFERENCE_RUMUS) {
       const refHeaderRow =
         comp.sameAsEntryIndex != null ? componentRowOfEntry.get(comp.sameAsEntryIndex) : undefined;
       sheet.getCell(`${COL.rumus}${row}`).value = CROSS_REFERENCE_RUMUS;
       sheet.getCell(`${COL.volumeBagian}${row}`).value = refHeaderRow
-        ? { formula: `${COL.volumeTerpasang}${refHeaderRow}` }
-        : 0;
+        ? { formula: `${COL.volumeTerpasang}${refHeaderRow}`, result: componentResult }
+        : componentResult;
     } else {
       const def = getFormulaDefinition(comp.formulaRumus);
       if (!def) throw new Error(`Unknown RUMUS: ${comp.formulaRumus}`);
@@ -304,7 +361,7 @@ function writeEntry(
 
       const rawFormula = def.toExcelFormula(ROW_COLS, row);
       const signedFormula = comp.sign === -1 ? `-(${rawFormula})` : rawFormula;
-      sheet.getCell(`${COL.volumeBagian}${row}`).value = { formula: signedFormula };
+      sheet.getCell(`${COL.volumeBagian}${row}`).value = { formula: signedFormula, result: componentResult };
     }
 
     sheet.getCell(`${COL.volumeBagian}${row}`).numFmt = NUMERIC_FMT;
@@ -314,12 +371,18 @@ function writeEntry(
   }
 
   const lastComponentRow = row - 1;
+  const volumeTerpasangResult = entryResults[entryIndex] ?? 0;
   // Volume Terpasang = live SUM over this entry's own Volume Bagian rows —
   // the generated output the whole system exists to produce correctly.
+  // Carries a cached `result` (see resolveEntryResults) so it displays
+  // right away even if Excel never gets to recalculate it.
   const volumeTerpasangCell = sheet.getCell(`${COL.volumeTerpasang}${entryHeaderRow}`);
   volumeTerpasangCell.value =
     lastComponentRow >= firstComponentRow
-      ? { formula: `SUM(${COL.volumeBagian}${firstComponentRow}:${COL.volumeBagian}${lastComponentRow})` }
+      ? {
+          formula: `SUM(${COL.volumeBagian}${firstComponentRow}:${COL.volumeBagian}${lastComponentRow})`,
+          result: volumeTerpasangResult,
+        }
       : 0;
   volumeTerpasangCell.font = { bold: true };
   volumeTerpasangCell.numFmt = NUMERIC_FMT;
@@ -334,6 +397,7 @@ function writeEntry(
     const deviasiCell = sheet.getCell(`${COL.deviasi}${entryHeaderRow}`);
     deviasiCell.value = {
       formula: `${COL.volumeTerpasang}${entryHeaderRow}-${COL.volumeAwal}${entryHeaderRow}`,
+      result: volumeTerpasangResult - entry.volumeAwal,
     };
     deviasiCell.font = { bold: true };
     deviasiCell.numFmt = NUMERIC_FMT;
@@ -397,12 +461,13 @@ export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Prom
   });
   const componentRowOfEntry = new Map<number, number>();
   input.entries.forEach((_, i) => componentRowOfEntry.set(i, reservedRows[i]));
+  const entryResults = resolveEntryResults(input.entries);
 
   for (const banner of banners) writeBanner(sheet, banner.row, banner.label, banner.kind);
 
   input.entries.forEach((entry, i) => {
     const headerRow = reservedRows[i];
-    const nextFreeRow = writeEntry(sheet, entry, headerRow, componentRowOfEntry);
+    const nextFreeRow = writeEntry(sheet, entry, i, headerRow, componentRowOfEntry, entryResults);
 
     const displaySize = imageSizes[i];
     if (entry.imageBuffer && displaySize) {

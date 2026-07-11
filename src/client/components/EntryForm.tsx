@@ -150,7 +150,7 @@ export function EntryForm({
       />
       {imagePreviewUrl && <img className="image-preview" src={imagePreviewUrl} alt="Selected drawing" />}
 
-      <label>Work item (Category → Sub-category → Item, from the parsed BQ)</label>
+      <label>Work item (Category → Sub-category → Item, from the parsed Breakdown)</label>
       <WorkItemPicker workItems={workItems} selected={selectedWorkItem} onSelect={setSelectedWorkItem} />
 
       <label>Notasi (optional legend)</label>

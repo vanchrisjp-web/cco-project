@@ -3,7 +3,7 @@ import { FileText, UploadCloud, X } from "lucide-react";
 
 /** A real drag-and-drop file picker — click or drop, shows the chosen
  * file as a chip with its own remove control, instead of a bare
- * `<input type="file">`. Shared by the BQ PDF upload and the blueprint
+ * `<input type="file">`. Shared by the Breakdown PDF upload and the blueprint
  * image upload, which only differ in accept type and copy. */
 export function Dropzone({
   accept,
