@@ -1,19 +1,28 @@
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { api, type EntryRecord, type FormulaTemplate, type WorkItem } from "./api";
 import { UploadBq } from "./components/UploadBq";
 import { EntryForm } from "./components/EntryForm";
 import { EntryList } from "./components/EntryList";
 import { ExportPanel } from "./components/ExportPanel";
+import { AppMark, CheckIcon } from "./components/icons";
+
+const DEFAULT_PROJECT_NAME = "Untitled project";
+
+const panelMotion = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+};
 
 export default function App() {
   const [session, setSession] = useState<{ id: string; name: string } | null>(null);
-  const [projectName, setProjectName] = useState("Untitled project");
+  const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [formulas, setFormulas] = useState<FormulaTemplate[]>([]);
   const [entries, setEntries] = useState<EntryRecord[]>([]);
 
   useEffect(() => {
-    api.createSession("Untitled project").then((s) => {
+    api.createSession(DEFAULT_PROJECT_NAME).then((s) => {
       setSession(s);
       setProjectName(s.name);
     });
@@ -28,9 +37,9 @@ export default function App() {
     setWorkItems(await api.listWorkItems(sessionId));
   }
 
-  async function saveProjectName() {
+  async function saveProjectName(name: string) {
     if (!session) return;
-    const trimmed = projectName.trim();
+    const trimmed = name.trim();
     if (!trimmed || trimmed === session.name) {
       setProjectName(session.name);
       return;
@@ -38,6 +47,15 @@ export default function App() {
     const updated = await api.renameSession(session.id, trimmed);
     setSession(updated);
     setProjectName(updated.name);
+  }
+
+  // Only auto-fill from the uploaded PDF's filename while the project still
+  // has its placeholder name — a name the user deliberately typed is never
+  // overwritten by this.
+  function handleProjectNameSuggested(name: string) {
+    if (!session || session.name !== DEFAULT_PROJECT_NAME) return;
+    setProjectName(name);
+    saveProjectName(name);
   }
 
   if (!session) {
@@ -51,43 +69,63 @@ export default function App() {
   return (
     <div>
       <header className="app-header">
-        <div className="app-header__titles">
-          <h1>BV AWAL Generator</h1>
-          <input
-            className="project-name-input"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            onBlur={saveProjectName}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            }}
-            aria-label="Project name"
-            placeholder="Name this project…"
-          />
+        <div className="app-header__mark">
+          <span className="app-header__mark-glyph">
+            <AppMark />
+          </span>
+          <div className="app-header__titles">
+            <h1>BV AWAL Generator</h1>
+            <input
+              className="project-name-input"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              onBlur={(e) => saveProjectName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              aria-label="Project name"
+              placeholder="Name this project…"
+            />
+          </div>
         </div>
-        <span className="subtitle">Milestone 1 · backup-volume workbook builder</span>
+        <div className="app-header__meta">
+          <span className="subtitle">Milestone 1 · backup-volume workbook builder</span>
+          <span className="app-header__stamp">SESSION {session.id.replace(/^sess_/, "").slice(0, 10).toUpperCase()}</span>
+        </div>
       </header>
 
-      <div className="status-bar">
-        <div className={"status-chip" + (workItems.length > 0 ? " status-chip--done" : "")}>
-          <span className="status-chip__icon">1</span>
+      <motion.div className="status-bar" initial="initial" animate="animate">
+        <motion.div
+          className={"status-chip" + (workItems.length > 0 ? " status-chip--done" : "")}
+          variants={panelMotion}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <span className="status-chip__icon">{workItems.length > 0 ? <CheckIcon /> : "1"}</span>
           <span>
             <span className="status-chip__label">Bill of Quantity</span>
             <span className="status-chip__value">
               {workItems.length > 0 ? `${workItems.length} items parsed` : "Not uploaded yet"}
             </span>
           </span>
-        </div>
-        <div className={"status-chip" + (entries.length > 0 ? " status-chip--done" : "")}>
-          <span className="status-chip__icon">2</span>
+        </motion.div>
+        <motion.div
+          className={"status-chip" + (entries.length > 0 ? " status-chip--done" : "")}
+          variants={panelMotion}
+          transition={{ duration: 0.3, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <span className="status-chip__icon">{entries.length > 0 ? <CheckIcon /> : "2"}</span>
           <span>
             <span className="status-chip__label">Backup entries</span>
             <span className="status-chip__value">
               {entries.length > 0 ? `${entries.length} accumulated` : "None added yet"}
             </span>
           </span>
-        </div>
-        <div className={"status-chip" + (entries.length > 0 ? " status-chip--ready" : "")}>
+        </motion.div>
+        <motion.div
+          className={"status-chip" + (entries.length > 0 ? " status-chip--ready" : "")}
+          variants={panelMotion}
+          transition={{ duration: 0.3, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        >
           <span className="status-chip__icon">3</span>
           <span>
             <span className="status-chip__label">Export</span>
@@ -95,13 +133,23 @@ export default function App() {
               {entries.length > 0 ? "Ready to download" : "Add at least 1 entry"}
             </span>
           </span>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      <UploadBq sessionId={session.id} onParsed={() => refreshWorkItems(session.id)} />
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}>
+        <UploadBq
+          sessionId={session.id}
+          onParsed={() => refreshWorkItems(session.id)}
+          onProjectNameSuggested={handleProjectNameSuggested}
+        />
+      </motion.div>
 
       <div className="layout">
-        <div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+        >
           <EntryForm
             sessionId={session.id}
             workItems={workItems}
@@ -109,11 +157,15 @@ export default function App() {
             existingEntries={entries}
             onSubmitted={() => refreshEntries(session.id)}
           />
-        </div>
-        <div>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        >
           <EntryList entries={entries} onDeleted={() => refreshEntries(session.id)} />
           <ExportPanel sessionId={session.id} entryCount={entries.length} />
-        </div>
+        </motion.div>
       </div>
     </div>
   );

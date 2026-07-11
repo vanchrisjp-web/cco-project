@@ -347,6 +347,11 @@ export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Prom
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "BV AWAL Generator";
   workbook.created = new Date();
+  // ExcelJS writes formula cells with no cached result. Without this,
+  // Excel has nothing to display until the user forces a recalculation
+  // (F9) — every Volume Bagian/Terpasang/Deviasi cell would show blank on
+  // first open, which is exactly the bug this fixes.
+  workbook.calcProperties.fullCalcOnLoad = true;
 
   const sheet = workbook.addWorksheet("BV AWAL");
   writeHeader(sheet, input.projectName);

@@ -11,12 +11,24 @@ type ParsePhase = "idle" | "uploading" | "parsing" | "done";
 const PARSE_ESTIMATE_SECONDS = 2.2;
 const PARSE_ESTIMATE_CAP = 0.92;
 
+/** "breakdown BQ Renovasi BTN KCP Supermall Karawaci.pdf" -> "Renovasi BTN
+ * KCP Supermall Karawaci" — strips the extension and generic administrative
+ * prefixes ("BQ", "Breakdown BQ") that describe the document type, not the
+ * project, so the auto-derived name reads like an actual project title. */
+function deriveProjectNameFromFilename(filename: string): string {
+  const withoutExt = filename.replace(/\.pdf$/i, "").trim();
+  const withoutPrefix = withoutExt.replace(/^(breakdown\s+)?bq\s+/i, "").trim();
+  return withoutPrefix || withoutExt || "Untitled project";
+}
+
 export function UploadBq({
   sessionId,
   onParsed,
+  onProjectNameSuggested,
 }: {
   sessionId: string;
   onParsed: (count: number) => void;
+  onProjectNameSuggested: (name: string) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"free" | "accurate">("free");
@@ -54,6 +66,7 @@ export function UploadBq({
       setResult(res);
       setPhase("done");
       onParsed(res.itemCount);
+      onProjectNameSuggested(deriveProjectNameFromFilename(file.name));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPhase("idle");

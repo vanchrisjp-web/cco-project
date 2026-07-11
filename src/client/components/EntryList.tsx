@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { api, type EntryRecord } from "../api";
 import { CROSS_REFERENCE_RUMUS, getFormulaDefinition } from "../../shared/formulas";
 
@@ -31,17 +32,26 @@ export function EntryList({
       </h2>
       {entries.length === 0 && <p className="muted">Nothing added yet — build your first entry on the left.</p>}
       <ul className="entry-list">
-        {entries.map((entry) => {
-          const volumeTerpasang = computeVolumeTerpasang(entry.components);
-          const deviasi = entry.volume_awal != null ? volumeTerpasang - entry.volume_awal : null;
-          const deviationClass =
-            deviasi != null && deviasi < 0
-              ? " deviation-critical"
-              : deviasi != null && deviasi > 0
-                ? " deviation-good"
-                : "";
-          return (
-            <li key={entry.id} className={deviationClass.trim()}>
+        <AnimatePresence initial={false}>
+          {entries.map((entry) => {
+            const volumeTerpasang = computeVolumeTerpasang(entry.components);
+            const deviasi = entry.volume_awal != null ? volumeTerpasang - entry.volume_awal : null;
+            const deviationClass =
+              deviasi != null && deviasi < 0
+                ? " deviation-critical"
+                : deviasi != null && deviasi > 0
+                  ? " deviation-good"
+                  : "";
+            return (
+              <motion.li
+                key={entry.id}
+                layout
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 8 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                className={deviationClass.trim()}
+              >
               <img className="thumb" src={api.imageUrl(entry.image_r2_key)} alt="" />
               <div style={{ flex: 1 }}>
                 <div className="entry-title">{entry.work_item_description}</div>
@@ -78,9 +88,10 @@ export function EntryList({
               >
                 remove
               </button>
-            </li>
-          );
-        })}
+              </motion.li>
+            );
+          })}
+        </AnimatePresence>
       </ul>
     </section>
   );
