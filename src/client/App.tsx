@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { CheckCircle2, Download, DraftingCompass, FileStack, PencilRuler, ShieldCheck } from "lucide-react";
+import { motion } from "motion/react";
+import { CheckCircle2, ChevronDown, Download, DraftingCompass, FileStack, PencilRuler, ShieldCheck } from "lucide-react";
 import { api, type EntryRecord, type FormulaTemplate, type WorkItem } from "./api";
 import { UploadBq } from "./components/UploadBq";
 import { EntryForm } from "./components/EntryForm";
@@ -9,24 +9,9 @@ import { ExportPanel } from "./components/ExportPanel";
 
 const DEFAULT_PROJECT_NAME = "Untitled project";
 
-type Tab = "breakdown" | "build" | "entries";
-
-const TAB_META: Record<Tab, { title: string; description: string }> = {
-  breakdown: {
-    title: "Upload the Breakdown",
-    description:
-      "Upload the project's Bill of Quantity (Breakdown) PDF. It's parsed into a hierarchical list of work items — category, sub-category, item — used to match drawings in the next step.",
-  },
-  build: {
-    title: "Build a backup entry",
-    description:
-      "Match a blueprint drawing to a work item, pick the formula that fits its shape, and enter or auto-detect its dimensions. Volume Terpasang is always computed automatically.",
-  },
-  entries: {
-    title: "Entries & export",
-    description:
-      "Review everything accumulated in this session, run a QA pass, and download the finished BV AWAL workbook.",
-  },
+const fadeUp = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
 };
 
 export default function App() {
@@ -35,7 +20,10 @@ export default function App() {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [formulas, setFormulas] = useState<FormulaTemplate[]>([]);
   const [entries, setEntries] = useState<EntryRecord[]>([]);
-  const [tab, setTab] = useState<Tab>("breakdown");
+  // The Breakdown card collapses to a one-line summary once parsed, so the
+  // build/entries workspace below — the part used over and over — gets the
+  // room. Re-expandable any time to replace the file.
+  const [breakdownExpanded, setBreakdownExpanded] = useState(true);
 
   useEffect(() => {
     api.createSession(DEFAULT_PROJECT_NAME).then((s) => {
@@ -82,8 +70,6 @@ export default function App() {
     );
   }
 
-  const meta = TAB_META[tab];
-
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
@@ -108,93 +94,93 @@ export default function App() {
           placeholder="Name this project…"
         />
 
-        <div className="sidebar-section-label">Workspace</div>
+        <div className="sidebar-section-label">This session</div>
         <nav className="sidebar-nav">
-          <button
-            className={"sidebar-nav__item" + (tab === "breakdown" ? " sidebar-nav__item--active" : "")}
-            onClick={() => setTab("breakdown")}
-          >
+          <a href="#section-breakdown" className="sidebar-nav__item">
             <span className={"sidebar-nav__icon" + (workItems.length > 0 ? " sidebar-nav__icon--done" : "")}>
               {workItems.length > 0 ? <CheckCircle2 size={13} /> : "1"}
             </span>
             <span className="sidebar-nav__label">Breakdown</span>
             <span className="sidebar-nav__meta">{workItems.length > 0 ? workItems.length : "—"}</span>
-          </button>
-          <button
-            className={"sidebar-nav__item" + (tab === "build" ? " sidebar-nav__item--active" : "")}
-            onClick={() => setTab("build")}
-          >
+          </a>
+          <a href="#section-build" className="sidebar-nav__item">
             <span className="sidebar-nav__icon">
               <PencilRuler size={12} />
             </span>
             <span className="sidebar-nav__label">Build entry</span>
-          </button>
-          <button
-            className={"sidebar-nav__item" + (tab === "entries" ? " sidebar-nav__item--active" : "")}
-            onClick={() => setTab("entries")}
-          >
+          </a>
+          <a href="#section-entries" className="sidebar-nav__item">
             <span className={"sidebar-nav__icon" + (entries.length > 0 ? " sidebar-nav__icon--done" : "")}>
               {entries.length > 0 ? <FileStack size={13} /> : "3"}
             </span>
             <span className="sidebar-nav__label">Entries</span>
             <span className="sidebar-nav__meta">{entries.length > 0 ? entries.length : "—"}</span>
-          </button>
+          </a>
         </nav>
 
         <div className="sidebar-footer">
           <p>
             <ShieldCheck size={13} style={{ verticalAlign: "-2px", marginRight: "0.3rem" }} />
-            QA and export live in the Entries tab.
+            QA check and download are at the bottom of Entries.
           </p>
-          <button className="secondary" disabled={entries.length === 0} onClick={() => setTab("entries")}>
-            <Download size={14} />
-            Go to export
-          </button>
+          <a href="#section-entries">
+            <button className="secondary" disabled={entries.length === 0}>
+              <Download size={14} />
+              Jump to export
+            </button>
+          </a>
           <span className="stamp">SESSION {session.id.replace(/^sess_/, "").slice(0, 10).toUpperCase()}</span>
         </div>
       </aside>
 
       <main className="app-main">
-        <div className="main-header">
-          <h2>{meta.title}</h2>
-          <p>{meta.description}</p>
-        </div>
+        <section id="section-breakdown" style={{ scrollMarginTop: "1.5rem" }}>
+          {breakdownExpanded || workItems.length === 0 ? (
+            <UploadBq
+              sessionId={session.id}
+              onParsed={(count) => {
+                refreshWorkItems(session.id);
+                if (count > 0) setBreakdownExpanded(false);
+              }}
+              onProjectNameSuggested={handleProjectNameSuggested}
+            />
+          ) : (
+            <motion.button
+              className="breakdown-summary"
+              onClick={() => setBreakdownExpanded(true)}
+              initial="initial"
+              animate="animate"
+              variants={fadeUp}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <span className="breakdown-summary__icon">
+                <CheckCircle2 size={16} />
+              </span>
+              <span className="breakdown-summary__text">
+                <strong>{workItems.length} work items</strong> parsed from the Breakdown
+              </span>
+              <span className="breakdown-summary__action">
+                Replace <ChevronDown size={14} />
+              </span>
+            </motion.button>
+          )}
+        </section>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={tab}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          >
-            {tab === "breakdown" && (
-              <UploadBq
-                sessionId={session.id}
-                onParsed={(count) => {
-                  refreshWorkItems(session.id);
-                  if (count > 0) setTab("build");
-                }}
-                onProjectNameSuggested={handleProjectNameSuggested}
-              />
-            )}
-            {tab === "build" && (
-              <EntryForm
-                sessionId={session.id}
-                workItems={workItems}
-                formulas={formulas}
-                existingEntries={entries}
-                onSubmitted={() => refreshEntries(session.id)}
-              />
-            )}
-            {tab === "entries" && (
-              <>
-                <EntryList entries={entries} onDeleted={() => refreshEntries(session.id)} />
-                <ExportPanel sessionId={session.id} entryCount={entries.length} />
-              </>
-            )}
+        <div className="layout">
+          <motion.div id="section-build" style={{ scrollMarginTop: "1.5rem" }} initial="initial" animate="animate" variants={fadeUp} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}>
+            <EntryForm
+              sessionId={session.id}
+              workItems={workItems}
+              formulas={formulas}
+              existingEntries={entries}
+              onSubmitted={() => refreshEntries(session.id)}
+            />
           </motion.div>
-        </AnimatePresence>
+          <motion.div id="section-entries" style={{ scrollMarginTop: "1.5rem" }} initial="initial" animate="animate" variants={fadeUp} transition={{ duration: 0.3, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}>
+            <EntryList entries={entries} onDeleted={() => refreshEntries(session.id)} />
+            <ExportPanel sessionId={session.id} entryCount={entries.length} />
+          </motion.div>
+        </div>
       </main>
     </div>
   );

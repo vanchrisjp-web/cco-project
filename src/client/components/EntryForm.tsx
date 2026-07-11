@@ -34,7 +34,6 @@ export function EntryForm({
 }) {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageR2Key, setImageR2Key] = useState<string | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
   const [notasi, setNotasi] = useState("");
   const [volumeAwal, setVolumeAwal] = useState<number | null>(null);
@@ -49,9 +48,7 @@ export function EntryForm({
   async function handleImageChange(file: File | null) {
     setImageFile(file);
     setImageR2Key(null);
-    setImagePreviewUrl(null);
     if (!file) return;
-    setImagePreviewUrl(URL.createObjectURL(file));
     const { imageR2Key } = await api.uploadImage(sessionId, file);
     setImageR2Key(imageR2Key);
   }
@@ -120,7 +117,6 @@ export function EntryForm({
       });
       setImageFile(null);
       setImageR2Key(null);
-      setImagePreviewUrl(null);
       setSelectedWorkItem(null);
       setNotasi("");
       setVolumeAwal(null);
@@ -168,8 +164,8 @@ export function EntryForm({
         hint="PNG or JPEG blueprint snippet"
         file={imageFile}
         onChange={handleImageChange}
+        imagePreview
       />
-      {imagePreviewUrl && <img className="image-preview" src={imagePreviewUrl} alt="Selected drawing" />}
 
       <label>Work item (Category → Sub-category → Item, from the parsed Breakdown)</label>
       <WorkItemPicker workItems={workItems} selected={selectedWorkItem} onSelect={setSelectedWorkItem} />
