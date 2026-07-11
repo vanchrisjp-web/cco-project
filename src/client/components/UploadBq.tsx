@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { FileUp, Loader2 } from "lucide-react";
 import { api } from "../api";
+import { Dropzone } from "./Dropzone";
 
 type ParsePhase = "idle" | "uploading" | "parsing" | "done";
 
@@ -80,7 +82,13 @@ export function UploadBq({
       </div>
       <h2>Upload the project's BQ PDF</h2>
       <label>PDF file</label>
-      <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      <Dropzone
+        accept="application/pdf"
+        label="Click to upload or drag & drop"
+        hint="The Bill of Quantity PDF for this project"
+        file={file}
+        onChange={setFile}
+      />
 
       <label>Extraction path</label>
       <div className="row">
@@ -106,8 +114,9 @@ export function UploadBq({
         </label>
       </div>
 
-      <div style={{ marginTop: "1rem" }}>
+      <div style={{ marginTop: "1.1rem" }}>
         <button disabled={!file || busy} onClick={handleUpload}>
+          {busy ? <Loader2 size={16} className="spin" /> : <FileUp size={16} />}
           {phase === "uploading" ? "Uploading…" : phase === "parsing" ? "Parsing…" : "Upload & parse"}
         </button>
       </div>

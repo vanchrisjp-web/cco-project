@@ -1,4 +1,5 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
+import { Inbox, Trash2 } from "lucide-react";
 import { api, type EntryRecord } from "../api";
 import { CROSS_REFERENCE_RUMUS, getFormulaDefinition } from "../../shared/formulas";
 
@@ -30,7 +31,12 @@ export function EntryList({
       <h2>
         This session <span className="pill pill--accent">{entries.length}</span>
       </h2>
-      {entries.length === 0 && <p className="muted">Nothing added yet — build your first entry on the left.</p>}
+      {entries.length === 0 && (
+        <p className="muted" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <Inbox size={16} />
+          Nothing added yet — build your first entry on the left.
+        </p>
+      )}
       <ul className="entry-list">
         <AnimatePresence initial={false}>
           {entries.map((entry) => {
@@ -86,6 +92,7 @@ export function EntryList({
                   onDeleted();
                 }}
               >
+                <Trash2 size={13} />
                 remove
               </button>
               </motion.li>

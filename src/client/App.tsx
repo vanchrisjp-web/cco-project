@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
+import { CheckCircle2, DraftingCompass } from "lucide-react";
 import { api, type EntryRecord, type FormulaTemplate, type WorkItem } from "./api";
 import { UploadBq } from "./components/UploadBq";
 import { EntryForm } from "./components/EntryForm";
 import { EntryList } from "./components/EntryList";
 import { ExportPanel } from "./components/ExportPanel";
-import { AppMark, CheckIcon } from "./components/icons";
 
 const DEFAULT_PROJECT_NAME = "Untitled project";
 
@@ -69,9 +69,10 @@ export default function App() {
   return (
     <div>
       <header className="app-header">
+        <div className="app-header__glow" />
         <div className="app-header__mark">
           <span className="app-header__mark-glyph">
-            <AppMark />
+            <DraftingCompass size={22} />
           </span>
           <div className="app-header__titles">
             <h1>BV AWAL Generator</h1>
@@ -100,7 +101,7 @@ export default function App() {
           variants={panelMotion}
           transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
         >
-          <span className="status-chip__icon">{workItems.length > 0 ? <CheckIcon /> : "1"}</span>
+          <span className="status-chip__icon">{workItems.length > 0 ? <CheckCircle2 size={16} /> : "1"}</span>
           <span>
             <span className="status-chip__label">Bill of Quantity</span>
             <span className="status-chip__value">
@@ -113,7 +114,7 @@ export default function App() {
           variants={panelMotion}
           transition={{ duration: 0.3, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
         >
-          <span className="status-chip__icon">{entries.length > 0 ? <CheckIcon /> : "2"}</span>
+          <span className="status-chip__icon">{entries.length > 0 ? <CheckCircle2 size={16} /> : "2"}</span>
           <span>
             <span className="status-chip__label">Backup entries</span>
             <span className="status-chip__value">

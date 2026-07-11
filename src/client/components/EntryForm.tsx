@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
+import { Loader2, Plus, Save, Trash2, Wand2 } from "lucide-react";
 import { api, type ComponentDraft, type FormulaTemplate, type WorkItem } from "../api";
 import { WorkItemPicker } from "./WorkItemPicker";
+import { Dropzone } from "./Dropzone";
 import { CROSS_REFERENCE_RUMUS, getFormulaDefinition } from "../../shared/formulas";
 
 const emptyComponent = (rumus: string): ComponentDraft => ({
@@ -139,10 +141,12 @@ export function EntryForm({
       <h2>Match a drawing to a work item</h2>
 
       <label>Drawing / blueprint image</label>
-      <input
-        type="file"
+      <Dropzone
         accept="image/png,image/jpeg"
-        onChange={(e) => handleImageChange(e.target.files?.[0] ?? null)}
+        label="Click to upload or drag & drop"
+        hint="PNG or JPEG blueprint snippet"
+        file={imageFile}
+        onChange={handleImageChange}
       />
       {imagePreviewUrl && <img className="image-preview" src={imagePreviewUrl} alt="Selected drawing" />}
 
@@ -179,7 +183,7 @@ export function EntryForm({
           <div className="component-row" key={i}>
             {components.length > 1 && (
               <button className="component-row__remove" onClick={() => removeComponent(i)}>
-                remove
+                <Trash2 size={13} /> remove
               </button>
             )}
             <label>Formula (RUMUS)</label>
@@ -223,6 +227,7 @@ export function EntryForm({
                       disabled={suggestingIndex === i}
                       onClick={() => handleSuggest(i, "free")}
                     >
+                      {suggestingIndex === i ? <Loader2 size={15} className="spin" /> : <Wand2 size={15} />}
                       {suggestingIndex === i ? "Reading…" : "Suggest from image (free)"}
                     </button>
                     <button
@@ -230,6 +235,7 @@ export function EntryForm({
                       disabled={suggestingIndex === i}
                       onClick={() => handleSuggest(i, "accurate")}
                     >
+                      <Wand2 size={15} />
                       Suggest (high-accuracy)
                     </button>
                     <span className="muted">Always review before submit — never auto-accepted.</span>
@@ -274,7 +280,7 @@ export function EntryForm({
 
       <div style={{ marginTop: "0.9rem" }}>
         <button className="secondary" onClick={addComponent}>
-          + Add another component
+          <Plus size={15} /> Add another component
         </button>
       </div>
 
@@ -307,6 +313,7 @@ export function EntryForm({
 
       <div style={{ marginTop: "1.2rem" }}>
         <button disabled={!canSubmit} onClick={handleSubmit}>
+          {busy ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
           {busy ? "Saving…" : "Add entry to session"}
         </button>
       </div>

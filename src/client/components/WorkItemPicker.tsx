@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Check, Search, X } from "lucide-react";
 import type { WorkItem } from "../api";
 
 /**
@@ -112,18 +113,22 @@ export function WorkItemPicker({
 
   return (
     <div className="work-item-picker">
-      <input
-        type="text"
-        placeholder={
-          selected ? buildLabel(selected.path.split(" > ").pop() ?? "", selected.description) : "Search or browse the parsed work items…"
-        }
-        value={filter}
-        onFocus={() => setOpen(true)}
-        onChange={(e) => {
-          setFilter(e.target.value);
-          setOpen(true);
-        }}
-      />
+      <div className="work-item-picker__input-wrap">
+        <Search size={15} className="work-item-picker__input-icon" />
+        <input
+          type="text"
+          style={{ paddingLeft: "2.1rem" }}
+          placeholder={
+            selected ? buildLabel(selected.path.split(" > ").pop() ?? "", selected.description) : "Search or browse the parsed work items…"
+          }
+          value={filter}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            setFilter(e.target.value);
+            setOpen(true);
+          }}
+        />
+      </div>
       {selected && !open && (
         <div className="work-item-picker__selected">
           <span className="pill pill--accent">selected</span> {breadcrumbLabel(selected)}
@@ -162,7 +167,10 @@ export function WorkItemPicker({
                         setOpen(false);
                       }}
                     >
-                      {it.label}
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        {selected?.id === it.workItem.id && <Check size={13} />}
+                        {it.label}
+                      </span>
                       {it.workItem.unit && (
                         <span className="work-item-picker__unit">{it.workItem.unit}</span>
                       )}
@@ -174,6 +182,7 @@ export function WorkItemPicker({
           ))}
           <div className="work-item-picker__close">
             <button className="ghost" onClick={() => setOpen(false)}>
+              <X size={13} />
               close
             </button>
           </div>

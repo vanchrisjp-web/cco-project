@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AlertTriangle, CheckCircle2, Download, Loader2, ShieldCheck } from "lucide-react";
 import { api } from "../api";
 
 export function ExportPanel({ sessionId, entryCount }: { sessionId: string; entryCount: number }) {
@@ -28,19 +29,29 @@ export function ExportPanel({ sessionId, entryCount }: { sessionId: string; entr
       </p>
       <div className="row">
         <button className="secondary" disabled={entryCount === 0 || checking} onClick={handleCheck}>
+          {checking ? <Loader2 size={15} className="spin" /> : <ShieldCheck size={15} />}
           {checking ? "Checking…" : "Run QA check"}
         </button>
         <a href={entryCount > 0 ? api.exportUrl(sessionId) : undefined}>
-          <button disabled={entryCount === 0}>Download .xlsx</button>
+          <button disabled={entryCount === 0}>
+            <Download size={16} />
+            Download .xlsx
+          </button>
         </a>
       </div>
 
       {findings && (
         <ul className="qa-findings">
-          {findings.length === 0 && <li>No concerns found.</li>}
+          {findings.length === 0 && (
+            <li>
+              <CheckCircle2 size={16} color="var(--good)" />
+              No concerns found.
+            </li>
+          )}
           {findings.map((f, i) => (
             <li key={i}>
               <span className={`pill pill--${f.severity === "error" ? "critical" : "warn"}`}>
+                <AlertTriangle size={11} />
                 {f.severity}
               </span>
               <span>{f.message}</span>

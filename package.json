@@ -16,8 +16,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
     "exceljs": "^4.4.0",
-    "framer-motion": "^12.42.2",
     "hono": "^4.12.29",
+    "lucide-react": "^1.24.0",
+    "motion": "^12.42.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "unpdf": "^1.6.2",
