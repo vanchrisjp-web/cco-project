@@ -54,7 +54,6 @@ dimensionsRoute.post("/sessions/:sessionId/suggest-dimensions", async (c) => {
       max_tokens: 512,
     });
     const suggestion = extractJson(result.description ?? result.response ?? "");
-    normalizePanjangLebar(suggestion);
     return c.json({ mode, suggestion, fields: def.fields });
   }
 
@@ -67,7 +66,7 @@ dimensionsRoute.post("/sessions/:sessionId/suggest-dimensions", async (c) => {
   const workItemContext = body.workItemDescription
     ? `\n\nThe work item this drawing is for: "${body.workItemDescription}". If a module/tile size is stated there (e.g. "60/60" means 0.6m x 0.6m tiles, "80/80" means 0.8m x 0.8m), use it to convert a grid-square count into a real measurement instead of leaving it as a bare square count.`
     : "";
-  const targetRegionGuidance = `\n\nThis crop may show more than one room or design element. If any region has a solid color fill (e.g. red, pink, orange) that contrasts with the rest of the drawing (which is normally just white/outlined), that fill marks the specific work item's target area — read or count dimensions for THAT region, not other outlined-only shapes, room labels, or fixtures shown elsewhere in the same crop. By convention, "panjang" is the larger of the two overall dimensions and "lebar" the smaller one, regardless of which is drawn horizontally or vertically on the page.`;
+  const targetRegionGuidance = `\n\nThis crop may show more than one room or design element. If any region has a solid color fill (e.g. red, pink, orange) that contrasts with the rest of the drawing (which is normally just white/outlined), that fill marks the specific work item's target area — read or count dimensions for THAT region, not other outlined-only shapes, room labels, or fixtures shown elsewhere in the same crop. By convention, "panjang" is the dimension along the top/horizontal extension line and "lebar" is the dimension along the side/vertical extension line, regardless of which one is numerically larger.`;
 
   const instruction = requestedDef
     ? `This is a crop from an architectural or structural drawing, for a work item already using the "${requestedDef.rumus}" formula (${requestedDef.label}). Read the dimension callouts (numbers with extension/dimension lines) for: ${requestedDef.fields.join(", ")}. Dimensions are typically in millimeters — convert to meters (divide by 1000) for panjang/lebar/tinggi.${targetRegionGuidance}
@@ -118,7 +117,6 @@ Reply with ONLY a JSON object with exactly these keys:
   const resolvedDef = requestedDef ?? (suggestedRumus ? getFormulaDefinition(suggestedRumus) : undefined);
 
   const dimensions = (parsed.dimensions as Record<string, number | null>) ?? {};
-  normalizePanjangLebar(dimensions);
 
   return c.json({
     mode,
@@ -129,21 +127,6 @@ Reply with ONLY a JSON object with exactly these keys:
     note: typeof parsed.note === "string" ? parsed.note : undefined,
   });
 });
-
-/**
- * The vision model reliably reads the two overall edge values correctly but
- * inconsistently applies the "panjang = larger value" convention itself —
- * observed swapping panjang/lebar even while its own note describes the
- * correct order. Every formula in FORMULA_LIBRARY that uses both fields
- * (P×L, P+L, etc.) is symmetric in panjang/lebar, so enforcing the
- * convention here is a safe, deterministic fix rather than another prompt
- * tweak asking the model to compare two numbers correctly.
- */
-function normalizePanjangLebar(dims: Record<string, number | null>): void {
-  if (typeof dims.panjang === "number" && typeof dims.lebar === "number" && dims.panjang < dims.lebar) {
-    [dims.panjang, dims.lebar] = [dims.lebar, dims.panjang];
-  }
-}
 
 function extractJson(text: string): Record<string, any> {
   const match = text.match(/\{[\s\S]*\}/);
