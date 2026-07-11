@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api, type ComponentDraft, type FormulaTemplate, type WorkItem } from "../api";
 import { WorkItemPicker } from "./WorkItemPicker";
+import { CROSS_REFERENCE_RUMUS, getFormulaDefinition } from "../../shared/formulas";
 
 const emptyComponent = (rumus: string): ComponentDraft => ({
   formulaRumus: rumus,
@@ -34,6 +35,7 @@ export function EntryForm({
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
   const [notasi, setNotasi] = useState("");
+  const [volumeAwal, setVolumeAwal] = useState<number | null>(null);
   const [components, setComponents] = useState<ComponentDraft[]>([
     emptyComponent(formulas[0]?.rumus ?? "U"),
   ]);
@@ -91,6 +93,7 @@ export function EntryForm({
         imageR2Key,
         imageFilename: imageFile?.name,
         notasi: notasi || null,
+        volumeAwal,
         components,
       });
       setImageFile(null);
@@ -98,6 +101,7 @@ export function EntryForm({
       setImagePreviewUrl(null);
       setSelectedWorkItem(null);
       setNotasi("");
+      setVolumeAwal(null);
       setComponents([emptyComponent(formulas[0]?.rumus ?? "U")]);
       onSubmitted();
     } catch (e) {
@@ -108,6 +112,24 @@ export function EntryForm({
   }
 
   const canSubmit = selectedWorkItem && imageR2Key && components.length > 0 && !busy;
+
+  // Volume Terpasang is always computed automatically — the same live-sum
+  // logic the exported workbook uses (see shared/formulas.ts), previewed
+  // here so it's visible while building the entry, not just after export.
+  // A "sama dengan <item>" component references another entry's own
+  // Volume Terpasang, which only resolves at export time against the full
+  // session, so it's excluded from this local preview rather than guessed.
+  const hasCrossRef = components.some((c) => c.formulaRumus === CROSS_REFERENCE_RUMUS);
+  const volumeTerpasangPreview = useMemo(
+    () =>
+      components.reduce((sum, comp) => {
+        if (comp.formulaRumus === CROSS_REFERENCE_RUMUS) return sum;
+        const def = getFormulaDefinition(comp.formulaRumus);
+        if (!def) return sum;
+        return sum + comp.sign * def.evaluate(comp);
+      }, 0),
+    [components]
+  );
 
   return (
     <section className="panel">
@@ -129,6 +151,20 @@ export function EntryForm({
 
       <label>Notasi (optional legend)</label>
       <input type="text" value={notasi} onChange={(e) => setNotasi(e.target.value)} />
+
+      <label>Volume Awal (field-measured / VAR reference, optional)</label>
+      <input
+        type="number"
+        step="any"
+        placeholder="Leave blank if there's nothing to check against yet"
+        value={volumeAwal ?? ""}
+        onChange={(e) => setVolumeAwal(e.target.value === "" ? null : Number(e.target.value))}
+      />
+      <p className="muted" style={{ marginTop: "0.3rem" }}>
+        When set, the exported sheet adds a live <strong>Deviasi Volume</strong> (Volume
+        Terpasang − Volume Awal), highlighted green/red — matching the reference BV AWAL sheet's
+        validation column.
+      </p>
 
       <h2 style={{ marginTop: "1.4rem" }}>Volume Bagian components</h2>
       <p className="muted">
@@ -240,6 +276,33 @@ export function EntryForm({
         <button className="secondary" onClick={addComponent}>
           + Add another component
         </button>
+      </div>
+
+      <div className="volume-preview">
+        <div className="volume-preview__row">
+          <span className="volume-preview__label">Volume Terpasang (auto-computed)</span>
+          <span className="volume-preview__value">
+            {volumeTerpasangPreview.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            {hasCrossRef && <span className="muted"> + cross-ref (resolved on export)</span>}
+          </span>
+        </div>
+        {volumeAwal != null && (
+          <div className="volume-preview__row">
+            <span className="volume-preview__label">Deviasi Volume (vs. Volume Awal)</span>
+            <span
+              className={
+                "volume-preview__value " +
+                (volumeTerpasangPreview - volumeAwal > 0
+                  ? "volume-preview__value--good"
+                  : volumeTerpasangPreview - volumeAwal < 0
+                    ? "volume-preview__value--critical"
+                    : "")
+              }
+            >
+              {(volumeTerpasangPreview - volumeAwal).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: "1.2rem" }}>

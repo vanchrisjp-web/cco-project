@@ -4,6 +4,18 @@ import { generateBvAwalWorkbook, type EntryInput } from "../lib/excelGen";
 
 export const exportRoute = new Hono<{ Bindings: Env }>();
 
+/** Mirrors WorkItemPicker.tsx's grouping so the exported sheet's category/
+ * sub-category banners match what the picker showed while entries were
+ * being built: category = the first breadcrumb segment, sub-category =
+ * the second when the path has 3+ segments (an item number alone, with no
+ * sub-category, is just "CATEGORY > item"). */
+function splitCategoryPath(path: string): { category: string | null; subcategory: string | null } {
+  const segments = path.split(" > ").map((s) => s.trim());
+  const category = segments[0] ?? null;
+  const subcategory = segments.length >= 3 ? segments[1] : null;
+  return { category, subcategory };
+}
+
 exportRoute.get("/sessions/:sessionId/export", async (c) => {
   const sessionId = c.req.param("sessionId");
 
@@ -52,11 +64,15 @@ exportRoute.get("/sessions/:sessionId/export", async (c) => {
     if (imageObject) imageBuffer = await imageObject.arrayBuffer();
 
     const ext = (row.image_r2_key.split(".").pop() || "png").toLowerCase();
+    const { category, subcategory } = splitCategoryPath(row.work_item_path as string);
 
     entries.push({
       no: i + 1,
       uraian: row.work_item_description,
+      category,
+      subcategory,
       notasi: row.notasi,
+      volumeAwal: row.volume_awal,
       imageBuffer,
       imageExtension: ext === "jpg" || ext === "jpeg" ? "jpeg" : "png",
       components: (componentsByEntry.get(row.id) ?? []).map((comp) => ({

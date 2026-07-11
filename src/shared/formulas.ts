@@ -6,6 +6,10 @@
  * plain number for the workbook itself — the numeric `evaluate()` output
  * is only for in-app preview before export.
  *
+ * Shared between worker (workbook generation) and client (live Volume
+ * Terpasang preview while building an entry) — pure logic, no
+ * environment-specific APIs, safe to import from either bundle.
+ *
  * Note: ExcelJS formula strings must NOT include a leading "=" — that's
  * added by Excel's own display layer, not stored in the underlying XML.
  */
@@ -29,12 +33,12 @@ export interface Dimensions {
 
 /** Column letters for a component row in the generated sheet (see Section 4.1). */
 export interface RowColumns {
-  panjang: string; // E
-  lebar: string; // F
-  tinggi: string; // G
-  berat: string; // H
-  koefisien: string; // I
-  unit: string; // J
+  panjang: string; // K
+  lebar: string; // L
+  tinggi: string; // M
+  berat: string; // N
+  koefisien: string; // O
+  unit: string; // P
 }
 
 export interface FormulaDefinition {

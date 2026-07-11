@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../types";
-import { getFormulaDefinition, CROSS_REFERENCE_RUMUS } from "../lib/formulas";
+import { getFormulaDefinition, CROSS_REFERENCE_RUMUS } from "../../shared/formulas";
 
 export const qaRoute = new Hono<{ Bindings: Env }>();
 

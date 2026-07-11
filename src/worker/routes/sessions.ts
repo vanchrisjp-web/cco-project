@@ -14,6 +14,15 @@ sessionsRoute.post("/sessions", async (c) => {
   return c.json({ id, name: body.name ?? "Untitled project" });
 });
 
+sessionsRoute.patch("/sessions/:id", async (c) => {
+  const body = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
+  if (!body.name || !body.name.trim()) return c.json({ error: "name is required" }, 400);
+  await c.env.DB.prepare("UPDATE sessions SET name = ? WHERE id = ?")
+    .bind(body.name.trim(), c.req.param("id"))
+    .run();
+  return c.json({ id: c.req.param("id"), name: body.name.trim() });
+});
+
 sessionsRoute.get("/sessions/:id", async (c) => {
   const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE id = ?")
     .bind(c.req.param("id"))

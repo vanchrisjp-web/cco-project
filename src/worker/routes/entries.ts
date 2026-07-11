@@ -54,6 +54,7 @@ const entrySchema = z.object({
   imageR2Key: z.string(),
   imageFilename: z.string().optional(),
   notasi: z.string().nullable().optional(),
+  volumeAwal: z.number().nullable().optional(),
   components: z.array(componentSchema).min(1),
 });
 
@@ -72,9 +73,18 @@ entriesRoute.post("/sessions/:sessionId/entries", async (c) => {
   const sortOrder = (countRows[0] as any).n as number;
 
   await c.env.DB.prepare(
-    "INSERT INTO backup_entries (id, session_id, work_item_id, image_r2_key, image_filename, notasi, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO backup_entries (id, session_id, work_item_id, image_r2_key, image_filename, notasi, volume_awal, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   )
-    .bind(entryId, sessionId, body.workItemId, body.imageR2Key, body.imageFilename ?? null, body.notasi ?? null, sortOrder)
+    .bind(
+      entryId,
+      sessionId,
+      body.workItemId,
+      body.imageR2Key,
+      body.imageFilename ?? null,
+      body.notasi ?? null,
+      body.volumeAwal ?? null,
+      sortOrder
+    )
     .run();
 
   const stmt = c.env.DB.prepare(

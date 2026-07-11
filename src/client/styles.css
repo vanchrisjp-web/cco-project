@@ -16,6 +16,10 @@
   --good-soft: #e1eee7;
   --mono: "Cascadia Code", "Consolas", "SF Mono", "Roboto Mono", ui-monospace, monospace;
   --sans: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --radius: 3px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -42,6 +46,21 @@
   box-sizing: border-box;
 }
 
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 body {
   margin: 0;
   background: var(--paper);
@@ -50,36 +69,143 @@ body {
   line-height: 1.5;
 }
 
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
 #root {
   max-width: 72rem;
   margin: 0 auto;
-  padding: 2rem 1.5rem 5rem;
+  padding: clamp(1.25rem, 1rem + 1vw, 2rem) 1.5rem 5rem;
 }
 
 .app-header {
   border: 1px solid var(--line-strong);
   background: var(--paper-raised);
   padding: 1.1rem 1.4rem;
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.25rem;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
 }
 
+.app-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
 .app-header h1 {
-  font-size: 1.15rem;
+  font-size: clamp(1.05rem, 1rem + 0.3vw, 1.25rem);
   margin: 0;
   letter-spacing: -0.01em;
 }
 
 .app-header .subtitle {
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--accent);
+}
+
+.project-name-input {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0.2rem 0.4rem;
+  margin: 0 -0.4rem;
+  border-radius: var(--radius);
+  min-width: 12rem;
+  max-width: 22rem;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.project-name-input:hover {
+  border-color: var(--line-strong);
+}
+
+.project-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.status-bar {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.75rem;
+}
+
+.status-chip {
+  flex: 1;
+  min-width: 11rem;
+  border: 1px solid var(--line);
+  background: var(--paper-raised);
+  padding: 0.55rem 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  transition: border-color var(--duration-normal) var(--ease-out);
+}
+
+.status-chip__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+.status-chip--done {
+  border-color: var(--good);
+}
+.status-chip--done .status-chip__icon {
+  border-color: var(--good);
+  color: var(--good);
+  background: var(--good-soft);
+}
+
+.status-chip--ready {
+  border-color: var(--accent);
+}
+.status-chip--ready .status-chip__icon {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.status-chip__label {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  display: block;
+}
+
+.status-chip__value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: block;
+  margin-top: 0.05rem;
 }
 
 .layout {
@@ -100,6 +226,7 @@ body {
   background: var(--paper-raised);
   padding: 1.25rem 1.4rem;
   margin-bottom: 1.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .panel__eyebrow {
@@ -187,18 +314,43 @@ button {
   background: var(--accent);
   color: white;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: var(--radius);
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 88%, black);
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 button.secondary {
   background: transparent;
   color: var(--accent);
 }
+button.secondary:not(:disabled):hover {
+  background: var(--accent-soft);
+}
 
 button.ghost {
   background: transparent;
   color: var(--ink-muted);
   border-color: var(--line-strong);
+}
+button.ghost:not(:disabled):hover {
+  background: var(--paper);
+  border-color: var(--ink-faint);
+}
+
+/* Only for genuinely destructive actions (e.g. "remove entry") — a plain
+   .ghost button (Suggest, Close) should never imply danger on hover. */
+button.ghost--danger:not(:disabled):hover {
+  background: var(--critical-soft);
+  color: var(--critical);
+  border-color: var(--critical);
 }
 
 button:disabled {
@@ -245,14 +397,30 @@ button + button {
 .entry-list li {
   padding: 0.7rem 0.9rem;
   border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
   align-items: flex-start;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.entry-list li:hover {
+  background: var(--paper);
 }
 
 .entry-list li:last-child {
   border-bottom: none;
+}
+
+/* A negative Deviasi Volume (installed less than the field-recorded
+   reference) gets a stripe so it reads at a glance, without waiting to
+   open the exported workbook to see the same signal. */
+.entry-list li.deviation-critical {
+  border-left-color: var(--critical);
+}
+.entry-list li.deviation-good {
+  border-left-color: var(--good);
 }
 
 .entry-list .entry-title {
@@ -300,6 +468,53 @@ button + button {
 .muted {
   color: var(--ink-muted);
   font-size: 0.82rem;
+}
+
+/* Live Volume Terpasang / Deviasi preview — the same auto-computed values
+   the exported workbook writes as live formulas, surfaced here so they're
+   visible while building an entry, not only after export. */
+.volume-preview {
+  margin-top: 1rem;
+  border: 1px solid var(--line-strong);
+  background: var(--accent-soft);
+  padding: 0.7rem 0.9rem;
+}
+
+.volume-preview__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.volume-preview__row + .volume-preview__row {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.volume-preview__label {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: var(--mono);
+}
+
+.volume-preview__value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+.volume-preview__value--good {
+  color: var(--good);
+}
+
+.volume-preview__value--critical {
+  color: var(--critical);
 }
 
 .qa-findings {
@@ -392,6 +607,7 @@ button + button {
   justify-content: space-between;
   gap: 0.6rem;
   align-items: baseline;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .work-item-picker__item:hover {

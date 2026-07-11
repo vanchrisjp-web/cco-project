@@ -34,6 +34,7 @@ export interface EntryRecord {
   work_item_unit: string | null;
   image_r2_key: string;
   notasi: string | null;
+  volume_awal: number | null;
   components: any[];
 }
 
@@ -51,6 +52,15 @@ export const api = {
     json<{ id: string; name: string }>(
       fetch("/api/sessions", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+    ),
+
+  renameSession: (id: string, name: string) =>
+    json<{ id: string; name: string }>(
+      fetch(`/api/sessions/${id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       })
@@ -140,6 +150,7 @@ export const api = {
       imageR2Key: string;
       imageFilename?: string;
       notasi?: string | null;
+      volumeAwal?: number | null;
       components: ComponentDraft[];
     }
   ) =>

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../types";
-import { getFormulaDefinition } from "../lib/formulas";
+import { getFormulaDefinition } from "../../shared/formulas";
 
 export const dimensionsRoute = new Hono<{ Bindings: Env }>();
 
