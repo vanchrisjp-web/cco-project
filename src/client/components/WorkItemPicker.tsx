@@ -171,8 +171,12 @@ export function WorkItemPicker({
                         {selected?.id === it.workItem.id && <Check size={13} />}
                         {it.label}
                       </span>
-                      {it.workItem.unit && (
-                        <span className="work-item-picker__unit">{it.workItem.unit}</span>
+                      {(it.workItem.volume_awal != null || it.workItem.unit) && (
+                        <span className="work-item-picker__unit">
+                          {it.workItem.volume_awal != null ? it.workItem.volume_awal : ""}
+                          {it.workItem.volume_awal != null && it.workItem.unit ? " " : ""}
+                          {it.workItem.unit ?? ""}
+                        </span>
                       )}
                     </div>
                   ))}

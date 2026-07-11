@@ -37,6 +37,10 @@ export function EntryForm({
   const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
   const [notasi, setNotasi] = useState("");
   const [volumeAwal, setVolumeAwal] = useState<number | null>(null);
+  // Once the user types their own Volume Awal, switching the selected work
+  // item must not clobber it — this only tracks whether the *current*
+  // value came from the Breakdown's own VOL AWAL column or a manual edit.
+  const [volumeAwalTouched, setVolumeAwalTouched] = useState(false);
   const [components, setComponents] = useState<ComponentDraft[]>([
     emptyComponent(formulas[0]?.rumus ?? "U"),
   ]);
@@ -44,6 +48,11 @@ export function EntryForm({
   const [error, setError] = useState<string | null>(null);
   const [suggestingIndex, setSuggestingIndex] = useState<number | null>(null);
   const [suggestionNotes, setSuggestionNotes] = useState<Record<number, string>>({});
+
+  function handleSelectWorkItem(item: WorkItem) {
+    setSelectedWorkItem(item);
+    if (!volumeAwalTouched) setVolumeAwal(item.volume_awal);
+  }
 
   async function handleImageChange(file: File | null) {
     setImageFile(file);
@@ -120,6 +129,7 @@ export function EntryForm({
       setSelectedWorkItem(null);
       setNotasi("");
       setVolumeAwal(null);
+      setVolumeAwalTouched(false);
       setComponents([emptyComponent(formulas[0]?.rumus ?? "U")]);
       setSuggestionNotes({});
       onSubmitted();
@@ -168,20 +178,26 @@ export function EntryForm({
       />
 
       <label>Work item (Category → Sub-category → Item, from the parsed Breakdown)</label>
-      <WorkItemPicker workItems={workItems} selected={selectedWorkItem} onSelect={setSelectedWorkItem} />
+      <WorkItemPicker workItems={workItems} selected={selectedWorkItem} onSelect={handleSelectWorkItem} />
 
       <label>Notasi (optional legend)</label>
       <input type="text" value={notasi} onChange={(e) => setNotasi(e.target.value)} />
 
-      <label>Volume Awal (field-measured / VAR reference, optional)</label>
+      <label>Volume Awal (from the Breakdown's own VOL AWAL column, or field-measured / VAR reference)</label>
       <input
         type="number"
         step="any"
         placeholder="Leave blank if there's nothing to check against yet"
         value={volumeAwal ?? ""}
-        onChange={(e) => setVolumeAwal(e.target.value === "" ? null : Number(e.target.value))}
+        onChange={(e) => {
+          setVolumeAwalTouched(true);
+          setVolumeAwal(e.target.value === "" ? null : Number(e.target.value));
+        }}
       />
       <p className="muted" style={{ marginTop: "0.3rem" }}>
+        {selectedWorkItem?.volume_awal != null && !volumeAwalTouched
+          ? "Pre-filled from the Breakdown — edit if the field-measured value differs. "
+          : ""}
         When set, the exported sheet adds a live <strong>Deviasi Volume</strong> (Volume
         Terpasang − Volume Awal), highlighted green/red — matching the reference BV AWAL sheet's
         validation column.

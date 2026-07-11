@@ -6,6 +6,10 @@ export interface ParsedWorkItem {
   description: string;
   unit: string | null;
   sourceCategory: string | null;
+  /** The Breakdown's own "VOL AWAL" column for this item, if present —
+   * the contract/existing volume before CCO backup verification, not to
+   * be confused with the Volume Terpasang this app later computes. */
+  volumeAwal: number | null;
 }
 
 const ROMAN_CATEGORY = /^([IVXLCM]+)\.?\s+([A-Z][A-Z0-9 .&/()'-]{2,})\s*$/;
@@ -28,6 +32,15 @@ const SKIP_LINE =
  * components of the item above, multi-line descriptions) are exactly what
  * the Tier 3 fallback below is for.
  */
+/** Numbers in this document style use "." for decimals (e.g. "6.14") and
+ * "," as a thousands separator (e.g. "357,500") — strip thousands commas
+ * before parsing. Returns null rather than NaN so a bad match degrades to
+ * "no volume found" instead of poisoning the value. */
+function parseIndoNumber(raw: string): number | null {
+  const n = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function parseWorkItemsDeterministic(
   pdfBuffer: ArrayBuffer
 ): Promise<ParsedWorkItem[]> {
@@ -71,22 +84,28 @@ export async function parseWorkItemsDeterministic(
       if (!/[a-zA-Z]/.test(rawDescription)) continue;
 
       // unpdf's plain-text extraction has no column boundaries, so a table
-      // row's trailing VOL/SAT/HARGA figures ride along on the same line as
-      // the description (e.g. "... (R. Locker) 6.14 6.14 m2 357,500
-      // 2,195,050"). Trim from the first run of "number number unit" onward
-      // — best-effort only; Tier 3 (Claude API, table-aware) is the
-      // accuracy fallback for breakdowns where this trim misfires.
-      const description = rawDescription
-        .replace(/\s+[\d.,]+\s+[\d.,]+\s+[a-zA-Z0-9']{1,4}\s+[\d.,]+.*$/, "")
-        .trim();
+      // row's trailing VOL AWAL/VOL EVALUASI/SAT/HARGA figures ride along
+      // on the same line as the description (e.g. "... (R. Locker) 6.14
+      // 6.14 m2 357,500 2,195,050"). The first number is VOL AWAL, the
+      // second is VOL EVALUASI (not needed here), then SAT — captured
+      // instead of just trimmed so both flow into the work item.
+      // Best-effort only; Tier 3 (Claude API, table-aware) is the accuracy
+      // fallback for breakdowns where this match misfires.
+      const columnsMatch = rawDescription.match(
+        /^(.*?)\s+([\d.,]+)\s+[\d.,]+\s+([a-zA-Z0-9']{1,4})\s+[\d.,]+.*$/
+      );
+      const description = (columnsMatch?.[1] ?? rawDescription).trim();
+      const volumeAwal = columnsMatch ? parseIndoNumber(columnsMatch[2]) : null;
+      const unit = columnsMatch?.[3] ?? null;
 
       const breadcrumbParts = [currentCategory, currentSubcategory].filter(Boolean);
       const label = numMatch ? `${numMatch[1]}. ${description}` : description;
       items.push({
         path: [...breadcrumbParts, label].join(" > "),
         description,
-        unit: null, // Tier 1 does not attempt column-aware SAT extraction — see module doc
+        unit,
         sourceCategory: currentCategory,
+        volumeAwal,
       });
     }
   }
@@ -104,7 +123,7 @@ interface ClaudeCategoryBlock {
   category: string;
   subcategories: {
     subcategory: string | null;
-    items: { no: string; description: string; unit: string | null }[];
+    items: { no: string; description: string; unit: string | null; volumeAwal: number | null }[];
   }[];
 }
 
@@ -122,6 +141,7 @@ function flattenClaudeBlocks(blocks: ClaudeCategoryBlock[]): ParsedWorkItem[] {
           path: [...breadcrumbParts, label].join(" > "),
           description: item.description,
           unit: item.unit ?? null,
+          volumeAwal: typeof item.volumeAwal === "number" ? item.volumeAwal : null,
           sourceCategory: block.category ?? null,
         });
       }
@@ -232,7 +252,7 @@ Group hierarchically instead of repeating the section path on every item — thi
       {
         "subcategory": "V.1 PEKERJAAN LANTAI",
         "items": [
-          { "no": "1", "description": "Pasang Lantai Keramik ... (R. Locker)", "unit": "m2" }
+          { "no": "1", "description": "Pasang Lantai Keramik ... (R. Locker)", "unit": "m2", "volumeAwal": 6.14 }
         ]
       }
     ]
@@ -245,6 +265,7 @@ Rules:
 - "no": the item's own number as printed (resets per section) — just the number, not repeated with a period.
 - "description": the item's own text, without the leading number.
 - "unit": the "SAT" unit of measure if shown (e.g. m2, m3, kg, unit, titik, ls), or null if not shown/not numeric (e.g. "by owner").
+- "volumeAwal": the item's own "VOLUME" or "VOL AWAL" column value (a plain number, e.g. 6.14), or null if blank/not shown. This is the item's existing contract quantity, not a price — don't confuse it with HARGA SATUAN or JUMLAH HARGA columns.
 - Keep description text exactly as printed — don't summarize or truncate it.`,
           },
         ],

@@ -4,6 +4,7 @@ export interface WorkItem {
   description: string;
   unit: string | null;
   source_category: string | null;
+  volume_awal: number | null;
 }
 
 export interface FormulaTemplate {

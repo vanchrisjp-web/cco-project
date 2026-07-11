@@ -74,10 +74,10 @@ sessionsRoute.post("/sessions/:id/bq", async (c) => {
   }
 
   const stmt = c.env.DB.prepare(
-    "INSERT INTO work_items (id, session_id, path, description, unit, source_category, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO work_items (id, session_id, path, description, unit, source_category, sort_order, volume_awal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   );
   const batch = parsed.map((item, i) =>
-    stmt.bind(newId("wi"), sessionId, item.path, item.description, item.unit, item.sourceCategory, i)
+    stmt.bind(newId("wi"), sessionId, item.path, item.description, item.unit, item.sourceCategory, i, item.volumeAwal)
   );
   if (batch.length > 0) await c.env.DB.batch(batch);
 
