@@ -17,8 +17,6 @@ const emptyComponent = (rumus: string): ComponentDraft => ({
   sign: 1,
   ket: null,
   sameAsEntryId: null,
-  imageR2Key: null,
-  imageFilename: null,
 });
 
 export function EntryForm({
@@ -43,10 +41,6 @@ export function EntryForm({
   const [components, setComponents] = useState<ComponentDraft[]>([
     emptyComponent(formulas[0]?.rumus ?? "U"),
   ]);
-  // Local File objects for each component's own detail image, parallel to
-  // `components` (which only carries the API-relevant imageR2Key/imageFilename
-  // once uploaded) — mirrors how the entry-level image is tracked.
-  const [componentImageFiles, setComponentImageFiles] = useState<(File | null)[]>([null]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestingIndex, setSuggestingIndex] = useState<number | null>(null);
@@ -67,20 +61,10 @@ export function EntryForm({
 
   function addComponent() {
     setComponents((prev) => [...prev, emptyComponent(formulas[0]?.rumus ?? "U")]);
-    setComponentImageFiles((prev) => [...prev, null]);
   }
 
   function removeComponent(index: number) {
     setComponents((prev) => prev.filter((_, i) => i !== index));
-    setComponentImageFiles((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleComponentImageChange(index: number, file: File | null) {
-    setComponentImageFiles((prev) => prev.map((f, i) => (i === index ? file : f)));
-    updateComponent(index, { imageR2Key: null, imageFilename: null });
-    if (!file) return;
-    const { imageR2Key } = await api.uploadImage(sessionId, file);
-    updateComponent(index, { imageR2Key, imageFilename: file.name });
   }
 
   async function handleSuggest(index: number, mode: "free" | "accurate") {
@@ -121,7 +105,6 @@ export function EntryForm({
       setNotasi("");
       setVolumeAwal(null);
       setComponents([emptyComponent(formulas[0]?.rumus ?? "U")]);
-      setComponentImageFiles([null]);
       onSubmitted();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -214,15 +197,6 @@ export function EntryForm({
                 </option>
               ))}
             </select>
-
-            <label>Detail drawing for this component (optional)</label>
-            <Dropzone
-              accept="image/png,image/jpeg"
-              label="Click to upload or drag & drop"
-              hint="Optional — a zoomed crop for just this sub-component, e.g. a recess or cut-out"
-              file={componentImageFiles[i] ?? null}
-              onChange={(file) => handleComponentImageChange(i, file)}
-            />
 
             {comp.formulaRumus !== "sama dengan <item>" ? (
               <>

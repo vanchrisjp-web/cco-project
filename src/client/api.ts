@@ -25,11 +25,6 @@ export interface ComponentDraft {
   sign: 1 | -1;
   ket: string | null;
   sameAsEntryId: string | null;
-  /** Optional detail drawing for just this sub-component (e.g. a crop of
-   * the recess or cut-out it represents) — separate from the entry's own
-   * overview image. */
-  imageR2Key: string | null;
-  imageFilename: string | null;
 }
 
 export interface EntryRecord {
