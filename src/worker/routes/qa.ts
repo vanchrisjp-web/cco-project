@@ -100,26 +100,43 @@ qaRoute.post("/sessions/:sessionId/qa", async (c) => {
       })
       .join("\n\n");
 
-    const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 2000,
-      messages: [
-        {
-          role: "user",
-          content: `You are reviewing a backup-volume (BV AWAL) worksheet before it's exported for a construction Contract Change Order. Below is every work item, its formula(s), and entered dimensions. Flag anything that looks like a real mistake: a unit of measure that doesn't match the formula type (e.g. an area formula with Sat="kg"), a dimension that looks implausible for the described item (e.g. a room listed as 300m long), or a formula that doesn't fit what the item description says it is. Do not flag things that are merely unusual but plausible. Reply with a short bullet list of concerns only, or "No concerns found" if there are none.
+    try {
+      const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 2000,
+        messages: [
+          {
+            role: "user",
+            content: `You are reviewing a backup-volume (BV AWAL) worksheet before it's exported for a construction Contract Change Order. Below is every work item, its formula(s), and entered dimensions. Flag anything that looks like a real mistake: a unit of measure that doesn't match the formula type (e.g. an area formula with Sat="kg"), a dimension that looks implausible for the described item (e.g. a room listed as 300m long), or a formula that doesn't fit what the item description says it is. Do not flag things that are merely unusual but plausible. Reply with a short bullet list of concerns only, or "No concerns found" if there are none.
 
 ${summary}`,
-        },
-      ],
-    });
+          },
+        ],
+      });
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (textBlock && textBlock.type === "text" && !/no concerns/i.test(textBlock.text)) {
+      const textBlock = response.content.find((b) => b.type === "text");
+      if (textBlock && textBlock.type === "text" && !/no concerns/i.test(textBlock.text)) {
+        findings.push({
+          severity: "warning",
+          entryId: "",
+          message: textBlock.text.trim(),
+        });
+      }
+    } catch (err) {
+      // The AI layer is an enhancement, not a requirement — a failure here
+      // must not take down the whole QA pass (the deterministic findings
+      // above are still valid and useful on their own). Log full detail
+      // so `wrangler tail` shows the real cause instead of a bare status.
+      const detail =
+        err instanceof Anthropic.APIError
+          ? `status=${err.status} name=${err.name} message=${err.message}`
+          : String(err);
+      console.error("QA AI layer failed:", detail);
       findings.push({
         severity: "warning",
         entryId: "",
-        message: textBlock.text.trim(),
+        message: `AI review step failed (${detail}) — deterministic checks above still ran.`,
       });
     }
   }

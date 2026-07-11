@@ -79,8 +79,8 @@ entriesRoute.post("/sessions/:sessionId/entries", async (c) => {
 
   const stmt = c.env.DB.prepare(
     `INSERT INTO backup_entry_components
-      (id, entry_id, formula_template_id, panjang, lebar, tinggi, berat, koefisien, unit, sign, ket, same_as_entry_id, sort_order)
-     VALUES (?, ?, (SELECT id FROM formula_templates WHERE rumus = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, entry_id, formula_template_id, panjang, lebar, tinggi, berat, koefisien, unit, sat, sign, ket, same_as_entry_id, sort_order)
+     VALUES (?, ?, (SELECT id FROM formula_templates WHERE rumus = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const batch = body.components.map((comp, i) =>
     stmt.bind(
@@ -93,6 +93,7 @@ entriesRoute.post("/sessions/:sessionId/entries", async (c) => {
       comp.berat ?? null,
       comp.koefisien ?? null,
       comp.unit ?? null,
+      comp.sat ?? null,
       comp.sign,
       comp.ket ?? null,
       comp.sameAsEntryId ?? null,

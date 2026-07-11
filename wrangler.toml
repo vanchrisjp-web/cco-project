@@ -11,7 +11,7 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "bv_awal_db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "ebc2db30-0f1a-4167-a970-4e41636f0fbd"
 
 [[r2_buckets]]
 binding = "FILES"
