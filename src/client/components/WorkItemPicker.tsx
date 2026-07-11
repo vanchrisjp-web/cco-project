@@ -27,6 +27,29 @@ interface CategoryGroup {
 
 const NO_SUBCATEGORY = "(no sub-category)";
 
+/**
+ * The last `path` segment is sometimes the full label already (Tier 1's
+ * deterministic parser folds "N. description" into one segment), but Tier
+ * 3 (Claude) keeps `path` purely structural — its last segment can be just
+ * a bare marker like "1" or "I.9", with the real text only in
+ * `description`. Detect the bare-marker case and recombine, so the picker
+ * shows the actual work description either way.
+ */
+function buildLabel(lastSegment: string, description: string): string {
+  if (!lastSegment) return description || "(untitled item)";
+  if (!description || lastSegment.includes(description)) return lastSegment;
+  return `${lastSegment}. ${description}`;
+}
+
+/** Full breadcrumb for display, with the last segment corrected the same
+ * way as the tree label (see `buildLabel`), so "selected" text and the
+ * input placeholder never show a bare marker either. */
+function breadcrumbLabel(wi: WorkItem): string {
+  const segments = wi.path.split(" > ").map((s) => s.trim());
+  const fixedLast = buildLabel(segments[segments.length - 1] ?? "", wi.description);
+  return [...segments.slice(0, -1), fixedLast].join(" > ");
+}
+
 function buildTree(workItems: WorkItem[]): CategoryGroup[] {
   const categories = new Map<string, CategoryGroup>();
 
@@ -35,7 +58,7 @@ function buildTree(workItems: WorkItem[]): CategoryGroup[] {
     const categoryName = segments[0] ?? "(uncategorized)";
     const hasSubcategory = segments.length >= 3;
     const subcategoryName = hasSubcategory ? segments[1] : NO_SUBCATEGORY;
-    const label = segments[segments.length - 1];
+    const label = buildLabel(segments[segments.length - 1] ?? "", wi.description);
 
     if (!categories.has(categoryName)) {
       categories.set(categoryName, { name: categoryName, subcategories: new Map() });
@@ -92,7 +115,7 @@ export function WorkItemPicker({
       <input
         type="text"
         placeholder={
-          selected ? selected.path.split(" > ").pop() : "Search or browse the parsed work items…"
+          selected ? buildLabel(selected.path.split(" > ").pop() ?? "", selected.description) : "Search or browse the parsed work items…"
         }
         value={filter}
         onFocus={() => setOpen(true)}
@@ -103,7 +126,7 @@ export function WorkItemPicker({
       />
       {selected && !open && (
         <div className="work-item-picker__selected">
-          <span className="pill pill--accent">selected</span> {selected.path}
+          <span className="pill pill--accent">selected</span> {breadcrumbLabel(selected)}
         </div>
       )}
       {open && (

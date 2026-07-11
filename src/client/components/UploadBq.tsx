@@ -1,7 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
 type ParsePhase = "idle" | "uploading" | "parsing" | "done";
+
+// Tier 1 parsing is one synchronous pass server-side — there's no per-page
+// signal to report honestly. Instead of a fake bar that lies about being
+// "done", this climbs on an ease-out curve toward a cap just short of 100%
+// while we wait, then snaps to the real 100% the instant the response
+// actually lands, so it never overclaims completion.
+const PARSE_ESTIMATE_SECONDS = 2.2;
+const PARSE_ESTIMATE_CAP = 0.92;
 
 export function UploadBq({
   sessionId,
@@ -16,8 +24,21 @@ export function UploadBq({
   const [result, setResult] = useState<{ itemCount: number; mode: string } | null>(null);
   const [phase, setPhase] = useState<ParsePhase>("idle");
   const [uploadPct, setUploadPct] = useState(0);
+  const [parsePct, setParsePct] = useState(0);
+  const parseStartRef = useRef<number | null>(null);
 
   const busy = phase === "uploading" || phase === "parsing";
+
+  useEffect(() => {
+    if (phase !== "parsing") return;
+    parseStartRef.current = performance.now();
+    setParsePct(0);
+    const id = setInterval(() => {
+      const elapsedSeconds = (performance.now() - parseStartRef.current!) / 1000;
+      setParsePct(PARSE_ESTIMATE_CAP * (1 - Math.exp(-elapsedSeconds / PARSE_ESTIMATE_SECONDS)));
+    }, 100);
+    return () => clearInterval(id);
+  }, [phase]);
 
   async function handleUpload() {
     if (!file) return;
@@ -29,6 +50,7 @@ export function UploadBq({
         setUploadPct(fraction);
         if (fraction >= 1) setPhase("parsing");
       });
+      setParsePct(1);
       setResult(res);
       setPhase("done");
       onParsed(res.itemCount);
@@ -81,14 +103,14 @@ export function UploadBq({
         <div className="progress-bar" style={{ marginTop: "0.8rem" }}>
           <div className="progress-bar__track">
             <div
-              className={"progress-bar__fill" + (phase === "parsing" ? " progress-bar__fill--indeterminate" : "")}
-              style={phase === "uploading" ? { width: `${Math.round(uploadPct * 100)}%` } : undefined}
+              className="progress-bar__fill"
+              style={{ width: `${Math.round((phase === "uploading" ? uploadPct : parsePct) * 100)}%` }}
             />
           </div>
           <span className="progress-bar__label">
             {phase === "uploading"
               ? `Uploading… ${Math.round(uploadPct * 100)}%`
-              : "Parsing PDF structure — extracting categories, sub-categories, and items…"}
+              : `Parsing PDF structure — extracting categories, sub-categories, and items… ${Math.round(parsePct * 100)}%`}
           </span>
         </div>
       )}

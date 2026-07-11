@@ -13,7 +13,10 @@ import { readImageDimensions } from "./imageDimensions";
 const IMAGE_MAX_WIDTH_PX = 280;
 const IMAGE_MAX_HEIGHT_PX = 260;
 const DEFAULT_ROW_HEIGHT_PX = 20;
-const IMAGE_ANCHOR_COL = 16; // column Q (0-indexed), right of the data table
+// Column B (0-indexed) — under "Uraian Pekerjaan / Gambar", left side, matching
+// the reference BV AWAL sheet's layout (drawing sits below the description,
+// not off to the right).
+const IMAGE_ANCHOR_COL = 1;
 
 function computeImageDisplaySize(
   natural: { width: number; height: number } | null
@@ -213,22 +216,23 @@ export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Prom
 
   // First pass: reserve header rows so "sama dengan <item>" cross-refs
   // (which may point forward or backward) can resolve on the second pass.
-  // Reserve enough rows for whichever is taller: the component list, or
-  // the image at its real aspect ratio.
+  // The image sits BELOW the component rows (left side, under "Uraian
+  // Pekerjaan"), so its rows are additive here, not a max() with the
+  // component rows as when it was anchored beside them.
   const reservedRows: number[] = [];
   input.entries.forEach((entry, i) => {
     reservedRows.push(currentRow);
     const componentRows = Math.max(entry.components.length, 1) + 1;
     const imageRows = imageSizes[i]
-      ? Math.ceil(imageSizes[i]!.height / DEFAULT_ROW_HEIGHT_PX) + 1
+      ? Math.ceil(imageSizes[i]!.height / DEFAULT_ROW_HEIGHT_PX)
       : 0;
-    currentRow += Math.max(componentRows, imageRows) + 1; // + spacer row after
+    currentRow += componentRows + imageRows + 1; // + spacer row after
   });
   input.entries.forEach((_, i) => componentRowOfEntry.set(i, reservedRows[i]));
 
   input.entries.forEach((entry, i) => {
     const headerRow = reservedRows[i];
-    writeEntry(sheet, entry, headerRow, componentRowOfEntry);
+    const nextFreeRow = writeEntry(sheet, entry, headerRow, componentRowOfEntry);
 
     const displaySize = imageSizes[i];
     if (entry.imageBuffer && displaySize) {
@@ -239,9 +243,12 @@ export async function generateBvAwalWorkbook(input: GenerateWorkbookInput): Prom
       // Anchored at a fixed top-left cell with an explicit pixel size —
       // this scales the image to its real aspect ratio instead of
       // stretching it to fill a cell range (the earlier, distorting
-      // approach). Row is 0-indexed for ExcelJS's position anchor.
+      // approach). Row is 0-indexed for ExcelJS's position anchor; using
+      // `nextFreeRow` (1-indexed, right after the last component row)
+      // places the image directly below the entry's data, left-aligned
+      // under the Uraian Pekerjaan column.
       sheet.addImage(imageId, {
-        tl: { col: IMAGE_ANCHOR_COL, row: headerRow - 1 },
+        tl: { col: IMAGE_ANCHOR_COL, row: nextFreeRow - 1 },
         ext: { width: displaySize.width, height: displaySize.height },
       } as ExcelJS.ImagePosition);
     }
