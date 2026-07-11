@@ -917,6 +917,14 @@ button + button {
   flex: none;
 }
 
+.thumb--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-sunken);
+  color: var(--ink-faint);
+}
+
 /* ---------- Work item picker — grouped tree ---------- */
 
 .work-item-picker {

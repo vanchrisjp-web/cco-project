@@ -112,7 +112,7 @@ export function EntryForm({
   }
 
   async function handleSubmit() {
-    if (!selectedWorkItem || !imageR2Key) return;
+    if (!selectedWorkItem) return;
     setBusy(true);
     setError(null);
     try {
@@ -140,7 +140,7 @@ export function EntryForm({
     }
   }
 
-  const canSubmit = selectedWorkItem && imageR2Key && components.length > 0 && !busy;
+  const canSubmit = selectedWorkItem && components.length > 0 && !busy;
 
   // Volume Terpasang is always computed automatically — the same live-sum
   // logic the exported workbook uses (see shared/formulas.ts), previewed
@@ -167,11 +167,11 @@ export function EntryForm({
       </div>
       <h2>Match a drawing to a work item</h2>
 
-      <label>Drawing / blueprint image</label>
+      <label>Drawing / blueprint image (optional)</label>
       <Dropzone
         accept="image/png,image/jpeg"
         label="Click to upload or drag & drop"
-        hint="PNG or JPEG blueprint snippet"
+        hint="PNG or JPEG blueprint snippet — skip if this work item has no drawing"
         file={imageFile}
         onChange={handleImageChange}
         imagePreview

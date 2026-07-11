@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Inbox, Trash2 } from "lucide-react";
+import { ImageOff, Inbox, Trash2 } from "lucide-react";
 import { api, type EntryRecord } from "../api";
 import { CROSS_REFERENCE_RUMUS, getFormulaDefinition } from "../../shared/formulas";
 
@@ -58,7 +58,13 @@ export function EntryList({
                 transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                 className={deviationClass.trim()}
               >
-              <img className="thumb" src={api.imageUrl(entry.image_r2_key)} alt="" />
+              {entry.image_r2_key ? (
+                <img className="thumb" src={api.imageUrl(entry.image_r2_key)} alt="" />
+              ) : (
+                <span className="thumb thumb--empty" title="No drawing attached">
+                  <ImageOff size={16} />
+                </span>
+              )}
               <div style={{ flex: 1 }}>
                 <div className="entry-title">{entry.work_item_description}</div>
                 <div className="entry-meta">

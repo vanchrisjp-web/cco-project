@@ -33,7 +33,7 @@ export interface EntryRecord {
   work_item_path: string;
   work_item_description: string;
   work_item_unit: string | null;
-  image_r2_key: string;
+  image_r2_key: string | null;
   notasi: string | null;
   volume_awal: number | null;
   components: any[];
@@ -162,7 +162,7 @@ export const api = {
     sessionId: string,
     body: {
       workItemId: string;
-      imageR2Key: string;
+      imageR2Key: string | null;
       imageFilename?: string;
       notasi?: string | null;
       volumeAwal?: number | null;

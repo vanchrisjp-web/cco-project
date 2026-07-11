@@ -60,10 +60,14 @@ exportRoute.get("/sessions/:sessionId/export", async (c) => {
   for (let i = 0; i < (entryRows as any[]).length; i++) {
     const row = (entryRows as any[])[i];
     let imageBuffer: ArrayBuffer | null = null;
-    const imageObject = await c.env.FILES.get(row.image_r2_key);
-    if (imageObject) imageBuffer = await imageObject.arrayBuffer();
+    let imageExtension: "png" | "jpeg" = "png";
+    if (row.image_r2_key) {
+      const imageObject = await c.env.FILES.get(row.image_r2_key);
+      if (imageObject) imageBuffer = await imageObject.arrayBuffer();
+      const ext = (row.image_r2_key.split(".").pop() || "png").toLowerCase();
+      imageExtension = ext === "jpg" || ext === "jpeg" ? "jpeg" : "png";
+    }
 
-    const ext = (row.image_r2_key.split(".").pop() || "png").toLowerCase();
     const { category, subcategory } = splitCategoryPath(row.work_item_path as string);
 
     entries.push({
@@ -74,7 +78,7 @@ exportRoute.get("/sessions/:sessionId/export", async (c) => {
       notasi: row.notasi,
       volumeAwal: row.volume_awal,
       imageBuffer,
-      imageExtension: ext === "jpg" || ext === "jpeg" ? "jpeg" : "png",
+      imageExtension,
       components: (componentsByEntry.get(row.id) ?? []).map((comp) => ({
         formulaRumus: comp.formula_rumus,
         panjang: comp.panjang,

@@ -51,8 +51,10 @@ const componentSchema = z.object({
 
 const entrySchema = z.object({
   workItemId: z.string(),
-  imageR2Key: z.string(),
-  imageFilename: z.string().optional(),
+  // Optional — not every work item has a drawing/blueprint (e.g. lump-sum
+  // "unit"/"ls" items with no plan reference).
+  imageR2Key: z.string().nullable().optional(),
+  imageFilename: z.string().nullable().optional(),
   notasi: z.string().nullable().optional(),
   volumeAwal: z.number().nullable().optional(),
   components: z.array(componentSchema).min(1),
@@ -79,7 +81,7 @@ entriesRoute.post("/sessions/:sessionId/entries", async (c) => {
       entryId,
       sessionId,
       body.workItemId,
-      body.imageR2Key,
+      body.imageR2Key ?? null,
       body.imageFilename ?? null,
       body.notasi ?? null,
       body.volumeAwal ?? null,
